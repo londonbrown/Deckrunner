@@ -40,10 +40,9 @@ It's an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT 
 - Load a save, stand somewhere open, and press **Ctrl+Shift+F10** to start skating. Press it again to stop.
 - Skate 3's controls are on the gamepad.
 - **Session markers:** LB + d-pad down sets one; hold LB + d-pad up to return to it.
-- **Ctrl+Shift+F2** hides or shows V's head while you skate.
-- **Ctrl+Shift+F6** is the emergency stop if anything gets stuck.
 - **Ctrl+Shift+F12** saves the last few seconds of a ride for a bug report (see below).
-- Skate 3's volume: `red4ext\plugins\deckrunner\deckrunner.ini`, `[audio] volume=` (1.0 is the default, 0 turns it off).
+- Settings are in `red4ext\plugins\deckrunner\deckrunner.ini`: the two keys (`[keys] skate=`, `capture=`) and Skate 3's
+  volume (`[audio] volume=`; 1.0 is the default, 0 turns it off).
 
 ## Uninstall
 

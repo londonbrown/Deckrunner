@@ -13,7 +13,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../deps/RED4ext.SDK" red4ext_sd
 # (PxShape::getReferenceCount). Nothing is linked: PxGetPhysics is resolved at runtime from the game's
 # own PhysX3_x64.dll and everything else used is virtual or inline.
 
-add_library(deckrunner_probe SHARED src/Main.cpp src/PhysxProbe.cpp src/StageB.cpp src/StageC.cpp src/Board.cpp src/Pad.cpp src/Audio.cpp src/Data.cpp src/Transform.cpp src/Visibility.cpp)
+add_library(deckrunner_probe SHARED src/Main.cpp src/PhysxProbe.cpp src/StageB.cpp src/StageC.cpp src/Board.cpp src/Pad.cpp src/Audio.cpp src/Data.cpp src/Transform.cpp src/Visibility.cpp src/Keys.cpp)
 target_include_directories(deckrunner_probe PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/third_party/physx-3.4.2-cdpr-include"
   "${CMAKE_CURRENT_SOURCE_DIR}/third_party/pxshared-3.4-include")
@@ -43,6 +43,10 @@ add_executable(hf_winding tests/hf_winding.cpp)
 
 # Offline check of the Stage C1 chase-camera maths (not shipped).
 add_executable(rigid_math tests/rigid_math.cpp)
+
+# Offline check of deckrunner.ini [keys] parsing (not shipped).
+add_executable(keys_parse tests/keys_parse.cpp src/Keys.cpp)
+target_compile_definitions(keys_parse PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
 # Offline checks of the PlayStation pad reader (not shipped): report parsing, and a read-only probe of a connected pad.
 add_executable(pad_parse tests/pad_parse.cpp src/Pad.cpp)

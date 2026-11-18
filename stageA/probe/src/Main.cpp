@@ -30,6 +30,7 @@
 
 #include "Audio.hpp"
 #include "Data.hpp"
+#include "Keys.hpp"
 #include "Pad.hpp"
 #include "PhysxProbe.hpp"
 #include "StageB.hpp"
@@ -50,6 +51,24 @@ ULONGLONG g_playerSeenAt = 0;
 bool g_autoDone = false, g_hotkeyDown = false;
 
 template<class... A> void Log(const char* fmt, A... a) { g_sdk->logger->InfoF(g_handle, fmt, a...); }
+
+// 0.28.0: the players' two keys, from deckrunner.ini [keys] (Keys.hpp); a missing or unreadable binding keeps its default.
+keys::Chord g_keySkate, g_keyCapture;
+keys::Chord LoadKey(const wchar_t* name, const char* fallback)
+{
+    keys::Chord c;
+    std::string err;
+    keys::Parse(fallback, c, err);
+    wchar_t buf[128] = {};
+    GetPrivateProfileStringW(L"keys", name, L"", buf, 128, data::Ini().c_str());
+    std::string spec;
+    for (const wchar_t* p = buf; *p; ++p) spec += *p < 128 ? static_cast<char>(*p) : '?';
+    if (spec.empty()) return c;
+    keys::Chord read;
+    if (keys::Parse(spec, read, err)) return read;
+    Log("deckrunner.ini [keys] %ls=%s: %s; using %s", name, spec.c_str(), err.c_str(), c.text.c_str());
+    return c;
+}
 
 struct PlayerInfo
 {
@@ -425,20 +444,20 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
     GetWindowThreadProcessId(fg, &pid);
     const bool focused = pid == GetCurrentProcessId();
     const bool chord = focused && (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000);
-    // Players get Ctrl+Shift+F10 (skate), F2 (V's head), F6 (emergency stop) and F12 (capture). The lab's keys (F8
-    // probe, F7 third-person cycling, F11 pose test / teleport mode, Alt+F10 cycle test) exist only in a build configured
-    // with -DDECKRUNNER_LAB_KEYS=ON.
+    // Players get two keys, set in deckrunner.ini [keys] (Keys.hpp): skate (Ctrl+Shift+F10) and capture
+    // (Ctrl+Shift+F12). The lab's keys (Ctrl+Shift+ F8 probe, F7 third-person cycling, F11 pose test / teleport mode,
+    // F2 V's head, F6 emergency exit, Alt+F10 cycle test) exist only in a build configured with -DDECKRUNNER_LAB_KEYS=ON.
 #ifdef DECKRUNNER_LAB_KEYS
     const bool down = chord && (GetAsyncKeyState(VK_F8) & 0x8000);
     if (down && !g_hotkeyDown) RunProbe("hotkey");
     g_hotkeyDown = down;
-    const bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    const bool cycleKey = chord && (GetAsyncKeyState(VK_MENU) & 0x8000) && (GetAsyncKeyState(VK_F10) & 0x8000);
 #else
-    const bool alt = false;
+    const bool cycleKey = false;
 #endif
-    static bool f10Down = false;
-    const bool f10 = chord && (GetAsyncKeyState(VK_F10) & 0x8000);
-    if (f10 && !f10Down && alt)  // C5: the cycle test
+    static bool f10Down = false, cycleDown = false;
+    const bool f10 = focused && keys::Held(g_keySkate);
+    if (cycleKey && !cycleDown)  // C5: the cycle test
     {
         const PlayerInfo p = GetPlayer();
         if (g_cycle.on) CycleFinish("stopped by Ctrl+Shift+Alt+F10");
@@ -462,7 +481,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
         if (stageb::Active())
         {
             stageb::Stop(&LogLine);
-            if (g_skateToggle && p.ok) LeaveSkating(p, "Ctrl+Shift+F10");
+            if (g_skateToggle && p.ok) LeaveSkating(p, g_keySkate.text.c_str());
         }
         else if (!p.ok) Log("stage B: player not available");
         else
@@ -472,7 +491,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
             if (stagec::Restricted() && !StartSkater(p) && g_skateToggle) LeaveSkating(p, "the skater could not start");
         }
     }
-    f10Down = f10;
+    f10Down = f10, cycleDown = cycleKey;
     CycleStep();
     // C5: the game needs V back (she died, is in a vehicle, a scene or a workspot, or it moved her): leave skating.
     if (stagec::Restricted() && !g_cycle.on)
@@ -490,7 +509,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
     if (stageb::Active() && g_frames % 15 == 0)
         if (const char* err = stageb::Failed())
         {
-            Log("stage C5: leaving skating: Skate's engine stopped (%s); the next Ctrl+Shift+F10 reloads it", err);
+            Log("stage C5: leaving skating: Skate's engine stopped (%s); the next %s reloads it", err, g_keySkate.text.c_str());
             if (g_cycle.on) CycleFinish("Skate's engine stopped");
             const PlayerInfo p = GetPlayer();
             if (p.ok && (g_skateToggle || stagec::Restricted())) LeaveSkating(p, "Skate's engine stopped");
@@ -521,19 +540,19 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
     // P1-11 (0.19.0): Ctrl+Shift+F12 captures the last 5 s of the ride and the collision around it, for moments that feel
     // wrong; bails are captured by themselves. F12 is unbound in the game (F9, the first choice, is its quick load).
     static bool f12Down = false;
-    const bool f12 = chord && (GetAsyncKeyState(VK_F12) & 0x8000);
+    const bool f12 = focused && keys::Held(g_keyCapture);
     if (f12 && !f12Down)
     {
         if (stageb::Active()) stageb::Capture(&LogLine), stagec::DumpFollowTrace(g_out, &LogLine);
-        else Log("stage B: capture: not riding (Ctrl+Shift+F12 works while skating)");
+        else Log("stage B: capture: not riding (%s works while skating)", g_keyCapture.text.c_str());
     }
     f12Down = f12;
     static bool f7Down = false, f6Down = false, f11Down = false, f2Down = false;
-    const bool f6 = chord && (GetAsyncKeyState(VK_F6) & 0x8000), f2 = chord && (GetAsyncKeyState(VK_F2) & 0x8000);
 #ifdef DECKRUNNER_LAB_KEYS
+    const bool f6 = chord && (GetAsyncKeyState(VK_F6) & 0x8000), f2 = chord && (GetAsyncKeyState(VK_F2) & 0x8000);
     const bool f7 = chord && (GetAsyncKeyState(VK_F7) & 0x8000), f11 = chord && (GetAsyncKeyState(VK_F11) & 0x8000);
 #else
-    const bool f7 = false, f11 = false;
+    const bool f6 = false, f2 = false, f7 = false, f11 = false;
 #endif
     if ((f7 && !f7Down) || (f6 && !f6Down) || (f11 && !f11Down) || (f2 && !f2Down))
     {
@@ -619,12 +638,14 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         const bool shield = vis::InstallShield(aSdk, aHandle);
         // stagec::InstallCameraHook(aSdk, aHandle, &LogLine);  // not attached in 0.9.5: with the first-person body the
         // camera is steady without it, and it runs on a worker thread anyway (C1 run 4). Kept for Stage C4.
+        g_keySkate = LoadKey(L"skate", "Ctrl+Shift+F10");
+        g_keyCapture = LoadKey(L"capture", "Ctrl+Shift+F12");
 #ifdef DECKRUNNER_LAB_KEYS
-        Log("Deckrunner 0.27.0 (lab keys) loaded (skate: Ctrl+Shift+F10; probe read-only: Ctrl+Shift+F8; skating on/off: Ctrl+Shift+F10, cycle test Ctrl+Shift+Alt+F10; capture the last 5 s of a ride: Ctrl+Shift+F12; sparse teleports or every frame while riding: Ctrl+Shift+F11; Stage C third person: Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.28.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #else
-        Log("Deckrunner 0.27.0 loaded (skate on/off: Ctrl+Shift+F10; V's head off/on while skating: Ctrl+Shift+F2; emergency stop: Ctrl+Shift+F6; capture the last 5 s of a ride: Ctrl+Shift+F12). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.28.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #endif
-            aSdk->runtime->major, aSdk->runtime->minor, aSdk->runtime->patch, added ? "added" : "FAILED",
+            g_keySkate.text.c_str(), g_keyCapture.text.c_str(), aSdk->runtime->major, aSdk->runtime->minor, aSdk->runtime->patch, added ? "added" : "FAILED",
             shield ? "attached" : "NOT attached (the engine's hide setters were not found or their code is not 2.5's)", g_out.c_str());
     }
     return true;
