@@ -1,3 +1,8 @@
-# No line-ending conversion: builds and the release zip use the committed bytes (the .cmd launchers are CRLF,
-# the GPL text is checked by hash).
-* -text
+# Line endings are fixed here, not by each machine's core.autocrlf: text is stored and checked out as LF, and the
+# Windows-native files as CRLF (cmd misreads LF batch files). Binaries are detected and left alone.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sln text eol=crlf
+*.vcxproj text eol=crlf
