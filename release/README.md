@@ -1,4 +1,4 @@
-# Deckrunner 0.1.1: Skate 3 in Cyberpunk 2077
+# Deckrunner 0.1.2: Skate 3 in Cyberpunk 2077
 
 ![Deckrunner](deckrunner-logo.png)
 

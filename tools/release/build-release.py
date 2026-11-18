@@ -1,10 +1,12 @@
 """Builds the Deckrunner release folder and zip from an allowlist: the plugin, the runtime, the setup and wkprobe (GPL-3.0,
 with its source). No programs: Nexus Mods quarantines uploads that contain executables (0.1.0 was), so the tools setup
-runs (SK8V's release, WolvenKit, .NET, Python) are downloaded by the setup from their official releases, pinned and
-hash-checked, and wkprobe ships as a .NET assembly. Nothing game-derived either: every file is listed here, and a final
-scan refuses game data formats, executables and this machine's paths.
+runs (Deckrunner's setup tools, WolvenKit, .NET, Python) are downloaded by the setup from their official releases,
+pinned and hash-checked, and wkprobe ships as a .NET assembly. No PowerShell either: VirusTotal's sandbox flagged 0.1.1's
+launcher (powershell -ExecutionPolicy Bypass -File from the Temp folder it unpacks into) under four Sigma rules, so the
+launcher is a .cmd that runs setup.py. Nothing game-derived either: every file is listed here, and a final scan refuses
+game data formats, programs, script-host files and this machine's paths.
 
-    python tools/release/build-release.py --version 0.1.1 [--sk8v <SK8V checkout>] [--skip-wkprobe]
+    python tools/release/build-release.py --version 0.1.2 [--sk8v <SK8V checkout>] [--skip-wkprobe]
 
 Build first: the plugin (cmake --build <probe-build> --config Release) and the runtime with paths remapped (BACKLOG.md,
 "Release 0.1.0"). wkprobe is published here (dotnet publish, framework-dependent, no apphost, against the WolvenKit
@@ -91,11 +93,14 @@ def main():
     copy(RUNTIME_DLL, plugin / 'runtime/deckrunner_runtime.dll')
     copy(rel / 'deckrunner.ini', plugin / 'deckrunner.ini')
     setup = out / 'setup'
-    for f in ('prepare.py', 'setup.ps1'):
+    for f in ('prepare.py', 'setup.py'):
         copy(rel / 'setup' / f, setup / f)
     copy(REPO / 'tools/board/board_glb.py', setup / 'board_glb.py')
-    # SK8V's Python bootstrap (Apache-2.0): it has to run before setup has Python.
-    copy(a.sk8v / 'tools/get-python.ps1', setup / 'get-python.ps1')
+    for f in ('Deckrunner Setup.cmd', 'Deckrunner Uninstall.cmd'):
+        text = (out / f).read_bytes()
+        code = [ln for ln in text.lower().split(b'\r\n') if not ln.strip().startswith(b'rem ')]
+        if any(b'powershell' in ln for ln in code) or b'\r\n' not in text or text.replace(b'\r\n', b'').count(b'\n'):
+            raise SystemExit(f'{f}: it must not run PowerShell, and it needs CRLF line endings (cmd mis-reads LF labels)')
     tag = subprocess.run(['git', '-C', str(a.sk8v), 'describe', '--tags', '--exact-match'], capture_output=True, text=True).stdout.strip()
     donor = a.sk8v / DONOR
     head = subprocess.run(['git', '-C', str(donor), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()

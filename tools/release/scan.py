@@ -13,6 +13,9 @@ RETAIL = {'.big', '.xex', '.mxb', '.glb', '.archive', '.animgraph', '.rig', '.me
           '.iso', '.pcm', '.wav', '.xma'}
 # Programs: Nexus Mods quarantines uploads that contain them (0.1.0 was); setup downloads the tools it runs instead.
 EXECUTABLES = {'.exe', '.com', '.scr', '.msi', '.pif'}
+# Script-host files: VirusTotal's sandbox runs them, and PowerShell started from the Temp folder it unpacks into matched
+# four Sigma rules on 0.1.1. The launchers are .cmd files that start setup.py.
+SCRIPT_HOSTS = {'.ps1', '.psm1', '.psd1', '.bat', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta'}
 
 
 def needles():
@@ -42,6 +45,9 @@ def scan(paths):
     for f in files:
         if f.suffix.lower() in EXECUTABLES:
             bad.append(f'{f}: a program ({f.suffix}); Nexus quarantines uploads with programs')
+            continue
+        if f.suffix.lower() in SCRIPT_HOSTS:
+            bad.append(f'{f}: a script-host file ({f.suffix}); antivirus sandboxes flag script hosts run from Temp')
             continue
         if f.suffix.lower() in RETAIL:
             bad.append(f'{f}: a game data format ({f.suffix})')
