@@ -1,0 +1,57 @@
+Deckrunner
+Copyright 2026 Deckrunner contributors
+
+Licensed under the Apache License, Version 2.0 (LICENSE).
+
+Deckrunner is an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT RED. It contains no Skate 3 or
+Cyberpunk 2077 code or data; players build what it needs from their own copies with its setup.
+
+This product builds on the following third-party work.
+
+SK8V (Apache-2.0)
+  https://github.com/becaring/SK8V, Copyright 2026 becaring.
+  Deckrunner's runtime (red4ext\plugins\deckrunner\runtime\deckrunner_runtime.dll) is built on SK8V's Skate runtime
+  and its crates, including skate-aems (Skate 3's audio runtime) and skate-hud. The setup downloads SK8V's official
+  1.1.10 release from GitHub (pinned SHA-256) and runs its preparation scripts and tools from it unchanged (xiso.py,
+  convert-skate-data.py, prepare-skate-audio.py, prepare-audio-tuning.py, skate-xma.exe, xex_image.exe); they are not
+  included here. setup\get-python.ps1 is SK8V's, unchanged.
+
+Skate engine (Apache-2.0)
+  2010 Rust Rewrite Mashup, by chasmlol, a fork of IW4L by vladtrc. https://github.com/chasmlol/2010-rust-rewrite-mashup
+  Its Skate 3 engine crates (skate-core, skate-data, skate-host, skate-net) are compiled into the runtime, with SK8V's
+  modifications.
+
+Skate 3 HUD and asset pipeline (Apache-2.0 by grant)
+  skate-3-rust-engine, by chasmlol, used under chasmlol's Apache-2.0 grant of 2026-10-07 at commit cb796893 (see SK8V's
+  NOTICE). https://github.com/SK8-ENGINE/skate-3-rust-engine
+  The setup runs its asset-pipeline exports from the donor snapshot in SK8V's release.
+
+EA-XMA audio decoder (LGPL-2.1-or-later)
+  skate-xma.exe, in SK8V's release (not included here), is SK8V's port of FFmpeg 4.4's xmaframes / WMA Pro decoder
+  (libavcodec), Copyright the FFmpeg developers, https://ffmpeg.org: a separate program under the GNU Lesser General
+  Public License 2.1 or later, with its source in SK8V's repository.
+
+RED4ext.SDK (MIT)
+  https://github.com/WopsS/RED4ext.SDK, Copyright (c) 2020 - present Octavian Dima (WopsS). Linked into the plugin.
+
+WolvenKit (GPL-3.0), not included
+  https://github.com/WolvenKit/WolvenKit. The setup downloads WolvenKit's official command-line release (pinned version
+  and SHA-256) onto the player's PC. setup\wkprobe\wkprobe.dll links it and is therefore licensed under the GNU General
+  Public License 3.0 or later (setup\wkprobe\LICENSE); its complete source is in setup\wkprobe\source.
+
+.NET runtime (MIT), not included
+  wkprobe runs on .NET 10. If none is installed, the setup downloads Microsoft's official .NET 10 runtime zip
+  (pinned SHA-512) into its work folder.
+
+Python, numpy and Pillow, not included
+  If the player has no suitable Python, setup\get-python.ps1 (SK8V's) downloads the official embeddable Python and the numpy
+  and Pillow wheels (each checked against its published SHA-256). Each keeps its own licence.
+
+Rust crates
+  Every other crate linked into the runtime keeps its own licence: THIRD-PARTY-NOTICES.txt lists them with their
+  licence texts.
+
+Thanks
+  The authors of True First Person Camera, the ITP/TFPC Compatibility Fix, Immersive Third Person, ITP TFPC Bald V Fix,
+  Appearance Menu Mod and JB Third Person Mod, whose published work showed how Cyberpunk 2077 shows and hides V's head.
+  No code of theirs is included.
