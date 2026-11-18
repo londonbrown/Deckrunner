@@ -43,7 +43,6 @@ It's an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT 
 - **Ctrl+Shift+F2** hides or shows V's head while you skate.
 - **Ctrl+Shift+F6** is the emergency stop if anything gets stuck.
 - **Ctrl+Shift+F12** saves the last few seconds of a ride for a bug report (see below).
-- **Stop skating before you save the game.**
 - Skate 3's volume: `red4ext\plugins\deckrunner\deckrunner.ini`, `[audio] volume=` (1.0 is the default, 0 turns it off).
 
 ## Uninstall
