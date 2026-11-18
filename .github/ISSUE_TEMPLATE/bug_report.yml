@@ -1,0 +1,67 @@
+name: Bug report
+description: Something broke or behaves wrong while skating or during setup.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please don't attach captures (`%LOCALAPPDATA%\Deckrunner\`): they hold collision and pose
+        data built from your own games. If a capture would help, we'll ask for it privately.
+  - type: input
+    id: version
+    attributes:
+      label: Deckrunner version
+      description: The zip's name, or the version at the top of its README.
+      placeholder: "0.1.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - While skating
+        - Starting or stopping skating
+        - During setup (Deckrunner Setup.cmd)
+        - Uninstalling
+        - Somewhere else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Load a save near ...
+        2. Press Ctrl+Shift+F10 ...
+  - type: input
+    id: game
+    attributes:
+      label: Game version and store
+      placeholder: "2.5, Steam"
+  - type: dropdown
+    id: pad
+    attributes:
+      label: Controller
+      options:
+        - Xbox controller
+        - PS5 DualSense
+        - Other
+  - type: input
+    id: v
+    attributes:
+      label: V's body type
+      placeholder: "female / male"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        The newest `deckrunner_probe-*.log` from the game's `red4ext\logs\` folder (drag it here), or setup's console
+        output for setup problems.

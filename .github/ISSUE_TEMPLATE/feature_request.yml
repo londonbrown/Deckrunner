@@ -1,0 +1,19 @@
+name: Feature request
+description: Something Deckrunner should do or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why? What would it change for you while skating?
+  - type: textarea
+    id: refs
+    attributes:
+      label: References
+      description: Mods, videos or Skate 3 moments that show what you mean. Please only point at sources; don't paste others' code or assets.

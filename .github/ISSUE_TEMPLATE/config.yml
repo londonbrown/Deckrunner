@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Download and install
+    url: https://github.com/londonbrown/Deckrunner/releases
+    about: The latest release and its install steps.
+  - name: Nexus Mods page
+    url: https://www.nexusmods.com/cyberpunk2077/mods/38864
+    about: Comments, endorsements and the Nexus download.
