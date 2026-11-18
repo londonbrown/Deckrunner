@@ -1,6 +1,6 @@
 """Builds deckrunner-setup-tools-<n>.zip: the two programs Deckrunner's setup runs, which Nexus Mods does not allow in a
-mod file, for a release of Deckrunner's own GitHub repository. Both are built from SK8V 1.1.10 (commit 6a1a6e2) in the
-deckrunner-sk8v fork with local paths remapped (cargo-release); skate-xma is LGPL-2.1-or-later, so its source ships
+mod file, for a release of Deckrunner's own GitHub repository. Both are built from deps/deckrunner-engine, Deckrunner's fork of SK8V
+(1.1.10, unchanged source) with local paths remapped (cargo-release); skate-xma is LGPL-2.1-or-later, so its source ships
 inside, and SK8V's licence and notice too.
 
     python tools/release/build-tools.py --number 1
@@ -15,7 +15,7 @@ import scan
 
 REPO = Path(__file__).resolve().parents[2]
 BUILT = Path(os.environ.get('LOCALAPPDATA', '')) / 'Deckrunner/cargo-release/release'
-SK8V = REPO.parent / 'deckrunner-sk8v'  # the SK8V fork, beside this repository
+SK8V = REPO / 'deps' / 'deckrunner-engine'  # Deckrunner's fork of SK8V (submodule)
 README = """Deckrunner setup tools {n}
 
 The two programs Deckrunner's setup runs to read your own Skate 3 disc. Nexus Mods does not allow programs in mod
@@ -26,7 +26,8 @@ files, so the setup downloads this file instead and checks it against its SHA-25
   source is in source/skate-xma.
 - xex_image.exe: SK8V's Xbox 360 executable reader (Apache-2.0, licenses/SK8V-LICENSE).
 
-Both are built unchanged from SK8V 1.1.10 (https://github.com/becaring/SK8V, commit 6a1a6e2).
+Both are built unchanged from SK8V 1.1.10 by becaring, from Deckrunner's fork:
+https://github.com/londonbrown/deckrunner-engine
 """
 
 

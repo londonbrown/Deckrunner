@@ -5,7 +5,7 @@
 Deckrunner puts Skate 3's skating into Night City: Skate's own engine runs beside Cyberpunk 2077, with Flick-It
 controls, tricks, grinds, manuals, bails and session markers on Night City's streets, and V riding in third person.
 
-**Download it from Nexus Mods:** https://www.nexusmods.com/cyberpunk2077/mods/38864
+**Download:** [GitHub releases](https://github.com/londonbrown/Deckrunner/releases) or [Nexus Mods](https://www.nexusmods.com/cyberpunk2077/mods/38864).
 
 It's an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT RED. It ships no Skate 3 or Cyberpunk
 2077 code or data: a one-time setup builds everything from your own Skate 3 disc and your own game install.
@@ -15,7 +15,8 @@ It's an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT 
 | Folder | What |
 |---|---|
 | `stageA/probe` | The RED4ext plugin (C++): V, the camera, her head, the board, Skate's controls and sound in the game. |
-| `stageB/deckrunner-runtime` | The runtime (Rust): Skate's engine from [SK8V](https://github.com/becaring/SK8V), fed Night City's collision. |
+| `stageB/deckrunner-runtime` | The runtime (Rust): Skate's engine, fed Night City's collision. |
+| `deps/deckrunner-engine` | Deckrunner's Skate engine, a fork of [SK8V](https://github.com/becaring/SK8V) by becaring (submodule). |
 | `release` | The player-facing setup (`setup/prepare.py`) and the release's README, licence and notice. |
 | `tools/wkprobe` | The setup's WolvenKit helper (C#, GPL-3.0): V's rigs, her animation graph, the board's game files. |
 | `tools/board`, `tools/release` | The board's mesh export, and the release packaging and scans. |

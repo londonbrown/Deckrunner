@@ -10,8 +10,8 @@ name = "deckrunner_runtime"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-skate-host = { path = "../../../deckrunner-sk8v/build/overlay/skate/crates/skate-host" }
-skatev-runtime = { path = "../../../deckrunner-sk8v/rust/skatev-runtime" }
+skate-host = { path = "../../deps/deckrunner-engine/build/overlay/skate/crates/skate-host" }
+skatev-runtime = { path = "../../deps/deckrunner-engine/rust/skatev-runtime" }
 bevy_math = "0.19"
 serde_json = "1"
 

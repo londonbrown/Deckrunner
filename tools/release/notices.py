@@ -3,7 +3,7 @@ Rust binary (the runtime) with its own licence files, from cargo's resolved
 dependency graph, and the RED4ext SDK's licence (the plugin). Fails when a shipped crate has neither licence files nor
 a licence field.
 
-    python tools/release/notices.py --out <file> [--sk8v <deckrunner-sk8v checkout>]
+    python tools/release/notices.py --out <file> [--engine <deps/deckrunner-engine>]
 """
 import argparse
 import json
@@ -13,7 +13,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 TARGET = 'x86_64-pc-windows-msvc'
 LICENSE_FILES = ('LICENSE', 'LICENCE', 'COPYING', 'NOTICE', 'UNLICENSE')
-RED4EXT_SDK = REPO.parent / 'cp-RED4ext.SDK' / 'LICENSE.md'  # the SDK checkout the plugin builds against
+RED4EXT_SDK = REPO / 'deps' / 'RED4ext.SDK' / 'LICENSE.md'  # the SDK checkout the plugin builds against
 
 HEADER = """Deckrunner third-party notices
 ==============================
@@ -48,7 +48,7 @@ def crates(manifest, roots):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', type=Path, required=True)
-    ap.add_argument('--sk8v', type=Path, default=REPO.parent / 'deckrunner-sk8v')
+    ap.add_argument('--engine', type=Path, default=REPO / 'deps' / 'deckrunner-engine')
     a = ap.parse_args()
     shipped = crates(REPO / 'stageB/deckrunner-runtime/Cargo.toml', {'deckrunner-runtime'})
     text = [HEADER, RED4EXT_SDK.read_text(encoding='utf-8').strip(), '']

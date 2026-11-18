@@ -1,13 +1,24 @@
 # Building Deckrunner
 
-Windows, x64. The source expects two checkouts **beside** this repository:
+Windows, x64. Everything comes from this repository and its submodules:
 
 | Folder | What |
 |---|---|
-| `deckrunner-sk8v` | [SK8V](https://github.com/becaring/SK8V) at tag **1.1.10** (commit 6a1a6e2), with its upstreams fetched and its patch overlay built (`tools\fetch-upstreams.ps1`, then `tools\build-rust.ps1`). The runtime links its crates; setup ships its scripts. |
-| `cp-RED4ext.SDK` | [RED4ext.SDK](https://github.com/WopsS/RED4ext.SDK) at commit `a34f0ad0a9e4f37cbe1fe001e4ff68c2949d0665` (defines the 2.5 runtime). |
+| `deps/deckrunner-engine` | Deckrunner's Skate engine: [londonbrown/deckrunner-engine](https://github.com/londonbrown/deckrunner-engine), a fork of [SK8V](https://github.com/becaring/SK8V) 1.1.10 by becaring (branch `deckrunner`). Its pinned upstreams are Deckrunner's forks too: [2010-rust-rewrite-mashup](https://github.com/londonbrown/2010-rust-rewrite-mashup) (the Skate engine crates) and [skate-3-rust-engine](https://github.com/londonbrown/skate-3-rust-engine) (the setup's asset pipeline). |
+| `deps/RED4ext.SDK` | [RED4ext.SDK](https://github.com/WopsS/RED4ext.SDK) at the commit that defines the 2.5 runtime. |
+| `stageA/probe/third_party` | NVIDIA PhysX 3.4 headers (BSD-3-Clause). |
 
-Toolchains: Visual Studio 2022 (C++), CMake 3.24+, Rust (stable), .NET 10 SDK, Python 3.11+ with numpy and Pillow.
+Toolchains: Visual Studio 2022 (C++), CMake 3.24+, Rust 1.98.1, .NET 10 SDK, Python 3.11+.
+
+```
+git clone --recursive https://github.com/londonbrown/Deckrunner.git
+cd Deckrunner
+pwsh deps/deckrunner-engine/tools/fetch-upstreams.ps1
+pwsh deps/deckrunner-engine/tools/prepare-skate-overlay.ps1
+```
+
+The last two fetch the engine's pinned upstreams from Deckrunner's forks and apply the engine's patches to the Skate
+crates (`deps/deckrunner-engine/build/overlay`).
 
 ## The plugin (`stageA/probe`)
 
@@ -23,9 +34,8 @@ cd stageB/deckrunner-runtime
 cargo build --release
 ```
 
-For a release, build it with your local paths remapped out of the binary (Rust embeds source paths in panic messages):
-`RUSTFLAGS="--remap-path-prefix=<your home>=~ --remap-path-prefix=<your source root>=src -C link-arg=/PDBALTPATH:%_PDB%"`,
-into `%LOCALAPPDATA%\Deckrunner\cargo-release`.
+For a release, remap your local paths out of the binary (Rust embeds source paths in panic messages):
+`RUSTFLAGS="--remap-path-prefix=<your source root>=src -C link-arg=/PDBALTPATH:%_PDB%"`.
 
 ## wkprobe (`tools/wkprobe`, GPL-3.0)
 
@@ -39,16 +49,19 @@ At run time it reads `DKR_WOLVENKIT` (the WolvenKit folder) and `DKR_GAME` (the 
 
 ## A release
 
+Push a tag `v<version>` with `release/notes/<version>.md` committed: `.github/workflows/release.yml` builds everything
+above on GitHub and publishes the zip as a GitHub release. Run the workflow by hand to build without publishing.
+
+Locally:
+
 ```
-python tools/release/build-tools.py --number <n>          # the setup tools zip for a GitHub release (rarely)
-python tools/release/build-release.py --version <version> # the Nexus zip, from an allowlist
+python tools/release/build-release.py --version <version> --plugin-dll <deckrunner_probe.dll> --runtime-dll <deckrunner_runtime.dll>
+python tools/release/build-tools.py --number <n>   # the setup tools zip (rarely)
 ```
 
-`build-release.py` refuses anything game-derived, any program (Nexus Mods quarantines them) and this machine's user
-name and home folder (`tools/release/scan.py`; add other private words in `DECKRUNNER_PRIVATE_WORDS`, separated by `;`).
-Set `WOLVENKIT_DIR` for its wkprobe publish.
-
-The player-facing setup is `release/setup/prepare.py`; see `release/README.md`.
+`build-release.py` refuses anything game-derived, any program or script-host file (Nexus Mods quarantines them) and
+this machine's user name and home folder (`tools/release/scan.py`; add other private words in
+`DECKRUNNER_PRIVATE_WORDS`, separated by `;`). Set `WOLVENKIT_DIR` for its wkprobe publish.
 
 ## What's never in this repository
 

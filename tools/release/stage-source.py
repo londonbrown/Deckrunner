@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[2]
 # (source, destination) folders and files; build outputs are skipped by name.
 ALLOW = ['stage0', 'stageA/probe/CMakeLists.txt', 'stageA/probe/src', 'stageA/probe/tests', 'stageA/probe/third_party',
          'stageB/deckrunner-runtime', 'tools/analysis', 'tools/board', 'tools/crash', 'tools/release', 'tools/wkprobe',
-         'release', 'media']
+         'release', 'media', '.github']
 SKIP_DIRS = {'target', 'bin', 'obj', '__pycache__', '.vs', 'out'}
 SKIP_SUFFIXES = {'.pyc', '.pdb', '.user', '.log'}
 

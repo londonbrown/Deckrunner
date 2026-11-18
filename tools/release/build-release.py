@@ -6,7 +6,7 @@ launcher (powershell -ExecutionPolicy Bypass -File from the Temp folder it unpac
 launcher is a .cmd that runs setup.py. Nothing game-derived either: every file is listed here, and a final scan refuses
 game data formats, programs, script-host files and this machine's paths.
 
-    python tools/release/build-release.py --version 0.1.2 [--sk8v <SK8V checkout>] [--skip-wkprobe]
+    python tools/release/build-release.py --version 0.1.2 [--engine <deps/deckrunner-engine>] [--skip-wkprobe]
 
 Build first: the plugin (cmake --build <probe-build> --config Release) and the runtime with paths remapped (BACKLOG.md,
 "Release 0.1.0"). wkprobe is published here (dotnet publish, framework-dependent, no apphost, against the WolvenKit
@@ -42,6 +42,8 @@ DONOR_PATHS = ['tools/asset_pipeline', 'tools/owned_game', 'tools/vendor/skate3_
                'tools/extract_session_marker.py', 'tools/install_prepared_hud.py', 'tools/prepare_hud.py',
                'tools/prepare_runtime_huds.py']
 DONOR_COMMIT = 'cb7968930f14dad38457e98720d1a274e469eec2'
+# deps/deckrunner-engine: Deckrunner's fork of SK8V 1.1.10, its pins pointed at Deckrunner's forks.
+ENGINE_COMMIT = 'd7c1d01b02c499dc826e87c47525a76dea1b66ce'
 
 
 def copy(src, dst):
@@ -74,9 +76,11 @@ def publish_wkprobe(out):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--version', required=True)
-    ap.add_argument('--sk8v', type=Path, default=REPO.parent / 'deckrunner-sk8v',
-                    help='the SK8V fork at tag 1.1.10, with its donor fetched')
+    ap.add_argument('--engine', type=Path, default=REPO / 'deps' / 'deckrunner-engine',
+                    help="Deckrunner's fork of SK8V (the deps/deckrunner-engine submodule), with its upstreams fetched")
     ap.add_argument('--skip-wkprobe', action='store_true', help='reuse the last publish (for repackaging)')
+    ap.add_argument('--plugin-dll', type=Path, default=PLUGIN_DLL, help='the built deckrunner_probe.dll')
+    ap.add_argument('--runtime-dll', type=Path, default=RUNTIME_DLL, help='the built deckrunner_runtime.dll')
     a = ap.parse_args()
     if sha256(GPL3) != GPL3_SHA:
         raise SystemExit(f'{GPL3} is not the canonical GPL-3.0 text')
@@ -89,8 +93,8 @@ def main():
         copy(rel / f, out / f)
     copy(REPO / 'media/deckrunner-logo.png', out / 'deckrunner-logo.png')
     plugin = out / 'payload/red4ext/plugins/deckrunner'
-    copy(PLUGIN_DLL, plugin / 'deckrunner.dll')
-    copy(RUNTIME_DLL, plugin / 'runtime/deckrunner_runtime.dll')
+    copy(a.plugin_dll, plugin / 'deckrunner.dll')
+    copy(a.runtime_dll, plugin / 'runtime/deckrunner_runtime.dll')
     copy(rel / 'deckrunner.ini', plugin / 'deckrunner.ini')
     setup = out / 'setup'
     for f in ('prepare.py', 'setup.py'):
@@ -101,16 +105,16 @@ def main():
         code = [ln for ln in text.lower().split(b'\r\n') if not ln.strip().startswith(b'rem ')]
         if any(b'powershell' in ln for ln in code) or b'\r\n' not in text or text.replace(b'\r\n', b'').count(b'\n'):
             raise SystemExit(f'{f}: it must not run PowerShell, and it needs CRLF line endings (cmd mis-reads LF labels)')
-    tag = subprocess.run(['git', '-C', str(a.sk8v), 'describe', '--tags', '--exact-match'], capture_output=True, text=True).stdout.strip()
-    donor = a.sk8v / DONOR
+    engine = subprocess.run(['git', '-C', str(a.engine), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    donor = a.engine / DONOR
     head = subprocess.run(['git', '-C', str(donor), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
-    if tag != '1.1.10' or head != DONOR_COMMIT:
-        raise SystemExit(f'{a.sk8v} is at {tag or "no tag"} with donor {head[:8]}; need 1.1.10 with donor {DONOR_COMMIT[:8]}')
+    if engine != ENGINE_COMMIT or head != DONOR_COMMIT:
+        raise SystemExit(f'{a.engine} is at {engine[:8]} with donor {head[:8]}; need {ENGINE_COMMIT[:8]} with donor {DONOR_COMMIT[:8]}')
     sk = setup / 'sk8v'
     for f in SK8V_TOOLS:
-        copy(a.sk8v / 'tools' / f, sk / 'tools' / f)
+        copy(a.engine / 'tools' / f, sk / 'tools' / f)
     for f in SK8V_FILES:
-        copy(a.sk8v / f, sk / f)
+        copy(a.engine / f, sk / f)
     for p in DONOR_PATHS:
         src = donor / p
         for f in ([x for x in src.rglob('*') if x.is_file()] if src.is_dir() else [src]):
