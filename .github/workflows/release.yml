@@ -1,6 +1,6 @@
-# Builds the Deckrunner release from source and, for a version tag (v1.2.3), publishes it as a GitHub release with
-# release/notes/<version>.md as its notes. Run it by hand (Actions > Release > Run workflow) to build without
-# publishing: the zip is then kept as a workflow artifact.
+# Builds the Deckrunner release from source with tools/release/ci-build.ps1 (run that locally to check a build first)
+# and, for a version tag (v1.2.3), publishes it as a GitHub release with release/notes/<version>.md as its notes. Run
+# the workflow by hand (Actions > Release > Run workflow) to build without publishing: the zip is kept as an artifact.
 #
 # Everything comes from this repository and its submodules: deps/deckrunner-engine (Deckrunner's fork of SK8V, whose
 # pinned upstreams are Deckrunner's forks too) and deps/RED4ext.SDK. WolvenKit's console release (for compiling wkprobe)
@@ -19,11 +19,6 @@ on:
 permissions:
   contents: write
 
-env:
-  RUST_TOOLCHAIN: 1.98.1
-  WOLVENKIT_URL: https://github.com/WolvenKit/WolvenKit/releases/download/10.0.0-beta.1/WolvenKit.Console-10.0.0-beta.1.zip
-  WOLVENKIT_SHA256: 292185c2f51d1ca85b95e1a7ca63a2d1bc8a3fc5ee387275e9a42ec78103155e
-
 jobs:
   release:
     runs-on: windows-latest
@@ -31,6 +26,10 @@ jobs:
       run:
         shell: pwsh
     steps:
+      # The repository's own files are protected by .gitattributes; this covers the submodules too.
+      - name: Byte-exact checkouts
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -43,20 +42,16 @@ jobs:
         with:
           python-version: "3.13"
 
+      # DKR_VERSION, not VERSION: MSBuild would take VERSION as wkprobe's assembly version.
       - name: Version
         run: |
           $v = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '${{ inputs.version }}' }
-          "VERSION=$v" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "DKR_VERSION=$v" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and -not (Test-Path "release/notes/$v.md")) { throw "release/notes/$v.md is missing" }
 
-      - name: Rust
-        run: |
-          rustup toolchain install $env:RUST_TOOLCHAIN --profile minimal
-          rustup default $env:RUST_TOOLCHAIN
-
-      # Caches: the engine's pinned upstreams (keyed by its lock), Cargo's crate downloads and the runtime's build
-      # (keyed by the lock files; the build cache is refreshed every run and restored from the newest), and the
-      # WolvenKit zip (keyed by its pinned SHA-256, and checked against it after a restore too).
+      # Caches (ci-build.ps1 works in runner.temp/work): the engine's pinned upstreams (keyed by its lock), Cargo's
+      # crate downloads and the runtime's build (keyed by the lock file; the build cache is saved every run and
+      # restored from the newest), and the WolvenKit zip (keyed by its pin, and hash-checked after a restore too).
       - name: Cache engine upstreams
         uses: actions/cache@v4
         with:
@@ -76,60 +71,29 @@ jobs:
       - name: Cache runtime build
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/cargo
-          key: cargo-target-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('stageB/deckrunner-runtime/Cargo.lock') }}-${{ github.sha }}
-          restore-keys: cargo-target-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('stageB/deckrunner-runtime/Cargo.lock') }}-
+          path: ${{ runner.temp }}/work/cargo
+          key: cargo-target-${{ hashFiles('tools/release/ci-build.ps1', 'stageB/deckrunner-runtime/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: cargo-target-${{ hashFiles('tools/release/ci-build.ps1', 'stageB/deckrunner-runtime/Cargo.lock') }}-
 
       - name: Cache WolvenKit
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/wolvenkit.zip
-          key: wolvenkit-${{ env.WOLVENKIT_SHA256 }}
+          path: ${{ runner.temp }}/work/wolvenkit.zip
+          key: wolvenkit-10.0.0-beta.1-292185c2f51d1ca85b95e1a7ca63a2d1bc8a3fc5ee387275e9a42ec78103155e
 
-      - name: Skate engine sources (from Deckrunner's forks)
-        run: |
-          ./deps/deckrunner-engine/tools/fetch-upstreams.ps1
-          ./deps/deckrunner-engine/tools/prepare-skate-overlay.ps1
-
-      - name: WolvenKit (to compile wkprobe against)
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP 'wolvenkit.zip'
-          if (-not (Test-Path $zip)) { Invoke-WebRequest $env:WOLVENKIT_URL -OutFile $zip }
-          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($sha -ne $env:WOLVENKIT_SHA256) { throw "WolvenKit zip SHA-256 $sha does not match the pin" }
-          $dir = Join-Path $env:RUNNER_TEMP 'wolvenkit'
-          Expand-Archive $zip $dir
-          "WOLVENKIT_DIR=$dir" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Plugin
-        run: |
-          cmake -S stageA/probe -B "$env:RUNNER_TEMP/probe" -A x64
-          cmake --build "$env:RUNNER_TEMP/probe" --config Release --target deckrunner_probe
-
-      - name: Runtime
-        working-directory: stageB/deckrunner-runtime
-        run: |
-          # Rust embeds source paths in panic messages: the repository and the runner's home (Cargo's crate sources).
-          $env:RUSTFLAGS = "--remap-path-prefix=$env:GITHUB_WORKSPACE=src --remap-path-prefix=$env:USERPROFILE=~ -C link-arg=/PDBALTPATH:%_PDB%"
-          $env:CARGO_TARGET_DIR = "$env:RUNNER_TEMP/cargo"
-          cargo build --release --locked
-
-      - name: Package
-        run: |
-          python tools/release/build-release.py --version $env:VERSION `
-            --plugin-dll "$env:RUNNER_TEMP/probe/Release/deckrunner_probe.dll" `
-            --runtime-dll "$env:RUNNER_TEMP/cargo/release/deckrunner_runtime.dll"
+      - name: Build
+        run: ./tools/release/ci-build.ps1 -Version $env:DKR_VERSION -Work "$env:RUNNER_TEMP/work"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Deckrunner-${{ env.VERSION }}
-          path: build/release/Deckrunner-${{ env.VERSION }}.zip
+          name: Deckrunner-${{ env.DKR_VERSION }}
+          path: build/release/Deckrunner-${{ env.DKR_VERSION }}.zip
 
       - name: Publish
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $pre = if ($env:VERSION.Contains('-')) { @('--prerelease') } else { @() }
-          gh release create $env:GITHUB_REF_NAME "build/release/Deckrunner-$env:VERSION.zip" `
-            --title "Deckrunner $env:VERSION" --notes-file "release/notes/$env:VERSION.md" @pre
+          $pre = if ($env:DKR_VERSION.Contains('-')) { @('--prerelease') } else { @() }
+          gh release create $env:GITHUB_REF_NAME "build/release/Deckrunner-$env:DKR_VERSION.zip" `
+            --title "Deckrunner $env:DKR_VERSION" --notes-file "release/notes/$env:DKR_VERSION.md" @pre
