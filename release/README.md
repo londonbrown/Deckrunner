@@ -1,4 +1,4 @@
-# Deckrunner 0.1.2: Skate 3 in Cyberpunk 2077
+# Deckrunner Setup: Skate 3 in Cyberpunk 2077
 
 ![Deckrunner](deckrunner-logo.png)
 
@@ -22,8 +22,12 @@ It's an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT 
 
 ## Install
 
-1. Extract this zip anywhere (not inside the game folder).
-2. Run **`Deckrunner Setup.cmd`**.
+Deckrunner comes as two downloads: **Deckrunner** (the plugin, the main file) and **Deckrunner Setup** (this one).
+
+1. Install **Deckrunner** like any mod: with Vortex or MO2, or extract it into the game folder (it holds
+   `red4ext\plugins\deckrunner\`).
+2. Extract **Deckrunner Setup** anywhere (not inside the game folder).
+3. Run **`Deckrunner Setup.cmd`**. You only need to run it once; plugin updates don't need it again.
    - It finds Cyberpunk 2077 through Steam or GOG (or asks you), then asks for your Skate 3 disc image or folder.
    - It needs Python 3.11 or newer with numpy and Pillow. If you don't have them, it offers to download a private copy
      (about 31 MB from python.org and PyPI, each file checked against its published SHA-256). Nothing is installed
@@ -33,7 +37,7 @@ It's an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT 
      two small SK8V programs that read your Skate 3 disc; WolvenKit's command-line release (45 MB, GitHub), to read and
      write the game's files; and Microsoft's .NET 10 runtime (37 MB) if you don't have it.
    - It takes a few minutes. If it stops, run it again: it picks up where it stopped.
-3. Setup installs Deckrunner into `red4ext\plugins\deckrunner\` and two archives into `archive\pc\mod\`.
+   - It builds Deckrunner's data into `red4ext\plugins\deckrunner\data\` and two archives into `archive\pc\mod\`.
 
 ## Play
 
@@ -46,7 +50,9 @@ It's an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT 
 
 ## Uninstall
 
-Run **`Deckrunner Uninstall.cmd`**. It removes the plugin, its data and the two archives. Your `deckrunner.ini` stays.
+1. Run **`Deckrunner Uninstall.cmd`**. It removes what setup built: the data and the two archives.
+2. Remove the **Deckrunner** plugin with your mod manager, or delete `red4ext\plugins\deckrunner\` if you installed it
+   by hand.
 
 ## Bug reports
 
