@@ -49,14 +49,15 @@ jobs:
           "DKR_VERSION=$v" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and -not (Test-Path "release/notes/$v.md")) { throw "release/notes/$v.md is missing" }
 
-      # Caches (ci-build.ps1 works in runner.temp/work): the engine's pinned upstreams (keyed by its lock), Cargo's
+      # Caches (ci-build.ps1 works in runner.temp/work): the engine's pinned upstreams (keyed by its lock; bump v2 if a
+      # cache was saved from bad checkouts), Cargo's
       # crate downloads and the runtime's build (keyed by the lock file; the build cache is saved every run and
       # restored from the newest), and the WolvenKit zip (keyed by its pin, and hash-checked after a restore too).
       - name: Cache engine upstreams
         uses: actions/cache@v4
         with:
           path: deps/deckrunner-engine/upstream
-          key: engine-upstream-${{ hashFiles('deps/deckrunner-engine/upstreams.lock.json') }}
+          key: engine-upstream-v2-${{ hashFiles('deps/deckrunner-engine/upstreams.lock.json') }}
 
       - name: Cache Cargo downloads
         uses: actions/cache@v4
