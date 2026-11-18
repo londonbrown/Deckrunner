@@ -1,0 +1,17 @@
+# Build outputs
+target/
+bin/
+obj/
+build/
+out/
+__pycache__/
+*.pyc
+*.pdb
+
+# Never in this repository: game data and the developer's lab
+lab/
+investigation/
+*.iso
+*.xex
+*.big
+*.archive

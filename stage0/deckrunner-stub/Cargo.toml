@@ -1,0 +1,23 @@
+[package]
+name = "deckrunner-stub"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Stage 0: drive SK8V's unchanged Skate session headlessly on synthetic Z-up geometry and record its output"
+
+[dependencies]
+# SK8V's pinned Skate engine with all 49 SK8V patches (materialised by the build clone's
+# tools/prepare-skate-overlay.ps1). Nothing from it is copied here.
+skate-host = { path = "../../../deckrunner-sk8v/build/overlay/skate/crates/skate-host" }
+# SK8V's runtime, used only as a library for its host-neutral helpers (coords, rails).
+skatev-runtime = { path = "../../../deckrunner-sk8v/rust/skatev-runtime" }
+bevy_math = "0.19"
+serde_json = "1"
+
+[profile.release]
+debug = "line-tables-only"
+panic = "unwind"
+
+# The Skate simulation is too slow unoptimised (same setting as SK8V's workspace).
+[profile.dev.package."*"]
+opt-level = 2

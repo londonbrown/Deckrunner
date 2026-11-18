@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="372" viewBox="0 0 1300 372" role="img" aria-label="Deckrunner">
+  <title>Deckrunner</title>
+  <defs>
+    <path id="gD" d="M0,0 H44 L64,20 V80 L44,100 H0 Z M14,14 V86 H38 L50,74 V26 L38,14 Z" fill-rule="evenodd"/>
+    <path id="gE" d="M0,0 H64 V14 H14 V43 H54 V57 H14 V86 H64 V100 H0 Z" fill-rule="evenodd"/>
+    <path id="gC" d="M20,0 H64 V14 H26 L14,26 V74 L26,86 H64 V100 H20 L0,80 V20 Z" fill-rule="evenodd"/>
+    <path id="gK" d="M0,0 H14 V100 H0 Z M14,43 L48,0 H66 L31,50 L66,100 H48 L14,57 Z" fill-rule="evenodd"/>
+    <path id="gR" d="M0,0 H48 L64,16 V42 L52,54 L66,100 H51 L38,58 H14 V100 H0 Z M14,14 V44 H42 L50,36 V22 L42,14 Z" fill-rule="evenodd"/>
+    <path id="gU" d="M0,0 H14 V78 L22,86 H42 L50,78 V0 H64 V86 L50,100 H14 L0,86 Z" fill-rule="evenodd"/>
+    <path id="gN" d="M0,0 H16 L50,70 V0 H64 V100 H48 L14,30 V100 H0 Z" fill-rule="evenodd"/>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="298" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#05060c"/>
+      <stop offset="0.68" stop-color="#140a1c"/>
+      <stop offset="0.92" stop-color="#3a1220"/>
+      <stop offset="1" stop-color="#7a2a1a"/>
+    </linearGradient>
+    <radialGradient id="haze" cx="650.0" cy="298" r="780" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff7a2e" stop-opacity="0.45"/>
+      <stop offset="0.5" stop-color="#b8263a" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="neon" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="100">
+      <stop offset="0" stop-color="#fff2e8"/>
+      <stop offset="0.35" stop-color="#ff9a6a"/>
+      <stop offset="0.75" stop-color="#ff3b3b"/>
+      <stop offset="1" stop-color="#c0123a"/>
+    </linearGradient>
+    <linearGradient id="street" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c0a12"/>
+      <stop offset="1" stop-color="#030306"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="reflect"><rect x="0" y="298" width="1300" height="74" fill="url(#fade)"/></mask>
+    <filter id="glow" x="-20%" y="-60%" width="140%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b2"/>
+      <feColorMatrix in="b2" type="matrix" values="1 0 0 0 0.2  0 0.3 0 0 0  0 0 0.3 0 0.05  0 0 0 1.4 0" result="red"/>
+      <feMerge><feMergeNode in="red"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft"><feGaussianBlur stdDeviation="1.80"/></filter>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="1" fill="#000" opacity="0.35"/>
+    </pattern>
+  </defs>
+
+  <rect width="1300" height="372" fill="#06070d"/>
+  <rect width="1300" height="298" fill="url(#sky)"/>
+  <rect width="1300" height="372" fill="url(#haze)"/>
+  <path fill="#07070e" d="M-10,298 V214 H40 V298 Z M34,298 V162 H80 V298 Z M86,298 V168 H139 V298 Z M110,168 V145 H114 V168 Z M142,298 V233 H201 V298 Z M200,298 V294 H271 V298 Z M280,298 V293 H349 V298 Z M356,298 V290 H403 V298 Z M408,298 V292 H478 V298 Z M478,298 V293 H515 V298 Z M509,298 V292 H571 V298 Z M574,298 V289 H653 V298 Z M650,298 V292 H681 V298 Z M682,298 V294 H726 V298 Z M723,298 V293 H780 V298 Z M785,298 V293 H848 V298 Z M842,298 V293 H895 V298 Z M893,298 V294 H972 V298 Z M976,298 V293 H1053 V298 Z M1055,298 V290 H1088 V298 Z M1093,298 V203 H1143 V298 Z M1147,298 V216 H1200 V298 Z M1202,298 V252 H1279 V298 Z M1276,298 V245 H1317 V298 Z"/>
+  <g fill="#ffb36b" opacity="0.55"><rect x="423" y="248" width="3" height="2"/><rect x="179" y="174" width="3" height="2"/><rect x="919" y="262" width="3" height="2"/><rect x="1026" y="215" width="3" height="2"/><rect x="418" y="176" width="3" height="2"/><rect x="122" y="229" width="3" height="2"/><rect x="254" y="197" width="3" height="2"/><rect x="565" y="220" width="3" height="2"/><rect x="867" y="273" width="3" height="2"/><rect x="211" y="268" width="3" height="2"/><rect x="323" y="182" width="3" height="2"/><rect x="846" y="251" width="3" height="2"/><rect x="967" y="171" width="3" height="2"/><rect x="532" y="231" width="3" height="2"/><rect x="28" y="266" width="3" height="2"/><rect x="741" y="210" width="3" height="2"/><rect x="687" y="235" width="3" height="2"/><rect x="115" y="186" width="3" height="2"/><rect x="947" y="261" width="3" height="2"/><rect x="1283" y="180" width="3" height="2"/><rect x="76" y="250" width="3" height="2"/><rect x="187" y="263" width="3" height="2"/><rect x="1039" y="260" width="3" height="2"/><rect x="1114" y="216" width="3" height="2"/><rect x="36" y="218" width="3" height="2"/><rect x="139" y="186" width="3" height="2"/><rect x="962" y="225" width="3" height="2"/><rect x="590" y="175" width="3" height="2"/><rect x="1189" y="190" width="3" height="2"/><rect x="402" y="181" width="3" height="2"/><rect x="1123" y="202" width="3" height="2"/><rect x="192" y="246" width="3" height="2"/><rect x="479" y="247" width="3" height="2"/><rect x="167" y="227" width="3" height="2"/><rect x="1010" y="211" width="3" height="2"/><rect x="405" y="283" width="3" height="2"/><rect x="748" y="213" width="3" height="2"/><rect x="833" y="282" width="3" height="2"/><rect x="325" y="262" width="3" height="2"/><rect x="958" y="208" width="3" height="2"/><rect x="187" y="190" width="3" height="2"/><rect x="367" y="258" width="3" height="2"/><rect x="564" y="273" width="3" height="2"/><rect x="756" y="269" width="3" height="2"/><rect x="737" y="266" width="3" height="2"/><rect x="324" y="243" width="3" height="2"/><rect x="1251" y="246" width="3" height="2"/><rect x="1167" y="206" width="3" height="2"/><rect x="1197" y="257" width="3" height="2"/><rect x="783" y="181" width="3" height="2"/><rect x="66" y="220" width="3" height="2"/><rect x="817" y="197" width="3" height="2"/><rect x="620" y="254" width="3" height="2"/><rect x="731" y="233" width="3" height="2"/><rect x="530" y="277" width="3" height="2"/><rect x="17" y="212" width="3" height="2"/><rect x="1128" y="165" width="3" height="2"/><rect x="1206" y="247" width="3" height="2"/><rect x="737" y="219" width="3" height="2"/><rect x="1067" y="223" width="3" height="2"/><rect x="319" y="209" width="3" height="2"/><rect x="975" y="257" width="3" height="2"/><rect x="36" y="287" width="3" height="2"/><rect x="1172" y="194" width="3" height="2"/><rect x="503" y="288" width="3" height="2"/><rect x="1253" y="242" width="3" height="2"/><rect x="606" y="234" width="3" height="2"/><rect x="513" y="194" width="3" height="2"/><rect x="187" y="265" width="3" height="2"/><rect x="51" y="267" width="3" height="2"/><rect x="942" y="249" width="3" height="2"/><rect x="417" y="252" width="3" height="2"/><rect x="1203" y="275" width="3" height="2"/><rect x="1060" y="233" width="3" height="2"/><rect x="1195" y="238" width="3" height="2"/><rect x="926" y="171" width="3" height="2"/><rect x="123" y="252" width="3" height="2"/><rect x="20" y="276" width="3" height="2"/><rect x="1158" y="223" width="3" height="2"/><rect x="903" y="284" width="3" height="2"/><rect x="595" y="267" width="3" height="2"/><rect x="97" y="262" width="3" height="2"/><rect x="276" y="258" width="3" height="2"/><rect x="277" y="243" width="3" height="2"/><rect x="926" y="208" width="3" height="2"/><rect x="384" y="231" width="3" height="2"/><rect x="452" y="283" width="3" height="2"/><rect x="1082" y="263" width="3" height="2"/><rect x="1162" y="273" width="3" height="2"/><rect x="196" y="243" width="3" height="2"/><rect x="606" y="193" width="3" height="2"/><rect x="993" y="175" width="3" height="2"/><rect x="678" y="192" width="3" height="2"/><rect x="263" y="269" width="3" height="2"/><rect x="561" y="211" width="3" height="2"/><rect x="216" y="284" width="3" height="2"/><rect x="730" y="238" width="3" height="2"/><rect x="661" y="195" width="3" height="2"/><rect x="422" y="226" width="3" height="2"/><rect x="474" y="269" width="3" height="2"/><rect x="497" y="282" width="3" height="2"/><rect x="905" y="229" width="3" height="2"/><rect x="411" y="270" width="3" height="2"/><rect x="297" y="269" width="3" height="2"/><rect x="167" y="224" width="3" height="2"/><rect x="449" y="263" width="3" height="2"/><rect x="828" y="167" width="3" height="2"/><rect x="491" y="206" width="3" height="2"/><rect x="850" y="282" width="3" height="2"/><rect x="1297" y="284" width="3" height="2"/><rect x="413" y="272" width="3" height="2"/><rect x="1069" y="194" width="3" height="2"/><rect x="1219" y="260" width="3" height="2"/><rect x="1107" y="277" width="3" height="2"/><rect x="560" y="217" width="3" height="2"/><rect x="833" y="269" width="3" height="2"/><rect x="471" y="177" width="3" height="2"/><rect x="107" y="241" width="3" height="2"/><rect x="1258" y="208" width="3" height="2"/><rect x="1076" y="194" width="3" height="2"/><rect x="45" y="286" width="3" height="2"/><rect x="797" y="230" width="3" height="2"/></g>
+  <rect x="0" y="298" width="1300" height="74" fill="url(#street)"/>
+  <rect x="0" y="297" width="1300" height="2" fill="#ff5a3a" opacity="0.8" filter="url(#soft)"/>
+
+  <g id="word" transform="translate(143.0,79.9) scale(1.1846)" fill="url(#neon)" filter="url(#glow)">
+      <use href="#gD" x="0"/>
+      <use href="#gE" x="88"/>
+      <use href="#gC" x="176"/>
+      <use href="#gK" x="264"/>
+      <use href="#gR" x="352"/>
+      <use href="#gU" x="440"/>
+      <use href="#gN" x="528"/>
+      <use href="#gN" x="616"/>
+      <use href="#gE" x="704"/>
+      <use href="#gR" x="792"/>
+  </g>
+  <g transform="translate(650.0,235.9) scale(0.8170)" fill="none" stroke="#ff4d4d" stroke-width="5" stroke-linecap="round" filter="url(#glow)">
+    <path d="M-230,-6 Q-262,-6 -270,-26 M-230,-6 H230 M230,-6 Q262,-6 270,-26"/>
+    <circle cx="-150" cy="14" r="11"/>
+    <circle cx="150" cy="14" r="11"/>
+  </g>
+  <text x="650.0" y="283.3" text-anchor="middle" fill="#ffb08a" opacity="0.85"
+        font-family="Consolas, 'Courier New', monospace" font-size="18.0" letter-spacing="11.4">SKATE 3 // NIGHT CITY</text>
+
+  <g mask="url(#reflect)" opacity="0.6">
+    <g transform="translate(0,506.1) scale(1,-1)">
+      <use href="#word" filter="url(#soft)"/>
+    </g>
+  </g>
+  <path stroke="#9fb4ff" stroke-width="1" opacity="0.16" d="M-78,142 l10.8,49 M73,138 l9.0,41 M622,365 l9.0,41 M1131,93 l10.8,49 M15,-6 l13.0,59 M415,142 l7.7,35 M348,32 l10.6,48 M76,204 l10.6,48 M487,27 l7.0,32 M1073,41 l10.3,47 M-38,283 l9.7,44 M58,-38 l12.5,57 M689,262 l13.0,59 M561,48 l12.1,55 M459,309 l5.1,23 M421,185 l7.7,35 M613,339 l7.0,32 M582,-35 l7.5,34 M176,204 l9.7,44 M442,287 l5.9,27 M727,36 l8.1,37 M865,89 l12.8,58 M571,195 l8.1,37 M677,96 l8.8,40 M351,-9 l12.5,57 M1232,204 l4.6,21 M692,58 l5.3,24 M483,116 l4.0,18 M385,186 l10.8,49 M1283,126 l12.5,57 M927,129 l8.4,38 M357,81 l6.8,31 M916,-25 l9.5,43 M4,101 l12.1,55 M505,191 l8.4,38 M1153,84 l5.3,24 M426,81 l8.6,39 M1126,-38 l12.5,57 M1165,25 l8.6,39 M1139,235 l10.3,47 M816,-29 l11.0,50 M-8,253 l4.8,22 M-78,219 l5.7,26 M840,294 l4.0,18 M1186,148 l11.0,50 M784,103 l4.8,22 M1157,29 l11.0,50 M820,116 l10.6,48 M706,202 l12.8,58 M1063,216 l11.9,54 M168,161 l12.5,57 M-43,22 l7.3,33 M944,342 l7.7,35 M756,43 l7.7,35 M186,166 l4.6,21 M116,207 l5.5,25 M472,-3 l9.2,42 M603,298 l7.7,35 M515,293 l6.4,29 M759,2 l8.4,38 M306,364 l13.2,60 M1205,105 l13.0,59 M1205,251 l7.9,36 M117,-13 l12.5,57 M-92,217 l13.0,59 M1117,318 l5.9,27 M690,19 l11.0,50 M677,206 l10.8,49 M541,28 l12.8,58 M438,254 l7.0,32 M1150,183 l7.3,33 M1273,278 l8.8,40 M1000,13 l9.5,43 M805,-18 l8.6,39 M1222,265 l13.0,59 M507,51 l9.9,45 M681,289 l4.4,20 M1020,246 l6.2,28 M0,261 l5.3,24 M743,-34 l7.3,33 M660,3 l8.1,37 M662,-15 l5.9,27 M655,345 l13.0,59 M1289,122 l6.6,30 M1147,275 l11.9,54 M811,369 l11.9,54 M669,82 l6.6,30 M531,204 l6.2,28 M21,284 l5.5,25 M857,2 l5.9,27 M167,17 l10.3,47 M821,11 l12.8,58 M461,-3 l7.3,33 M560,129 l9.2,42 M831,303 l5.1,23 M1291,240 l5.5,25 M398,57 l5.3,24 M721,-1 l7.7,35 M442,-3 l7.0,32 M42,18 l13.0,59 M351,244 l8.1,37 M405,-2 l11.0,50 M722,217 l12.8,58"/>
+  <rect width="1300" height="372" fill="url(#scan)"/>
+</svg>
