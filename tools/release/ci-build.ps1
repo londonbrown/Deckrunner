@@ -19,8 +19,9 @@ $WolvenKitSha = '292185c2f51d1ca85b95e1a7ca63a2d1bc8a3fc5ee387275e9a42ec78103155
 New-Item -ItemType Directory -Force $Work | Out-Null
 
 # Every git command below (the engine's upstream fetch) checks files out byte for byte, whatever the machine's
-# core.autocrlf: the release ships some of those files.
-$env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'core.autocrlf'; $env:GIT_CONFIG_VALUE_0 = 'false'
+# core.autocrlf (the release ships some of those files), and paths past Windows' 260 characters work.
+$env:GIT_CONFIG_COUNT = '2'; $env:GIT_CONFIG_KEY_0 = 'core.autocrlf'; $env:GIT_CONFIG_VALUE_0 = 'false'
+$env:GIT_CONFIG_KEY_1 = 'core.longpaths'; $env:GIT_CONFIG_VALUE_1 = 'true'
 
 function Step($name) { Write-Host "`n== $name" -ForegroundColor Cyan }
 
