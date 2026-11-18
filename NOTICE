@@ -11,10 +11,12 @@ This product builds on the following third-party work.
 SK8V (Apache-2.0)
   https://github.com/becaring/SK8V, Copyright 2026 becaring.
   Deckrunner's runtime (red4ext\plugins\deckrunner\runtime\deckrunner_runtime.dll) is built on SK8V's Skate runtime
-  and its crates, including skate-aems (Skate 3's audio runtime) and skate-hud. The setup downloads SK8V's official
-  1.1.10 release from GitHub (pinned SHA-256) and runs its preparation scripts and tools from it unchanged (xiso.py,
-  convert-skate-data.py, prepare-skate-audio.py, prepare-audio-tuning.py, skate-xma.exe, xex_image.exe); they are not
-  included here. setup\get-python.ps1 is SK8V's, unchanged.
+  and its crates, including skate-aems (Skate 3's audio runtime) and skate-hud. The setup runs SK8V 1.1.10's
+  preparation scripts unchanged (setup\sk8v\tools: xiso.py, _common.py, convert-skate-data.py, prepare-skate-audio.py,
+  prepare-audio-tuning.py; setup\sk8v\LICENSE and setup\sk8v\NOTICE are SK8V's own), and setup\get-python.ps1 is
+  SK8V's. Their two programs, skate-xma.exe and xex_image.exe, built unchanged from SK8V 1.1.10, are not in this
+  download (Nexus Mods does not allow programs in mod files): the setup fetches them from Deckrunner's GitHub release,
+  https://github.com/londonbrown/Deckrunner/releases/tag/setup-tools-1 (pinned SHA-256).
 
 Skate engine (Apache-2.0)
   2010 Rust Rewrite Mashup, by chasmlol, a fork of IW4L by vladtrc. https://github.com/chasmlol/2010-rust-rewrite-mashup
@@ -24,12 +26,12 @@ Skate engine (Apache-2.0)
 Skate 3 HUD and asset pipeline (Apache-2.0 by grant)
   skate-3-rust-engine, by chasmlol, used under chasmlol's Apache-2.0 grant of 2026-10-07 at commit cb796893 (see SK8V's
   NOTICE). https://github.com/SK8-ENGINE/skate-3-rust-engine
-  The setup runs its asset-pipeline exports from the donor snapshot in SK8V's release.
+  The setup runs its asset-pipeline exports from the snapshot in setup\sk8v\upstream\skate-3-rust-engine-donor.
 
 EA-XMA audio decoder (LGPL-2.1-or-later)
-  skate-xma.exe, in SK8V's release (not included here), is SK8V's port of FFmpeg 4.4's xmaframes / WMA Pro decoder
-  (libavcodec), Copyright the FFmpeg developers, https://ffmpeg.org: a separate program under the GNU Lesser General
-  Public License 2.1 or later, with its source in SK8V's repository.
+  skate-xma.exe, in Deckrunner's setup-tools release (not in this download), is SK8V's port of FFmpeg 4.4's
+  xmaframes / WMA Pro decoder (libavcodec), Copyright the FFmpeg developers, https://ffmpeg.org: a separate program
+  under the GNU Lesser General Public License 2.1 or later, with its complete source inside that release's zip.
 
 RED4ext.SDK (MIT)
   https://github.com/WopsS/RED4ext.SDK, Copyright (c) 2020 - present Octavian Dima (WopsS). Linked into the plugin.
