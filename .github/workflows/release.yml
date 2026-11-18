@@ -54,6 +54,38 @@ jobs:
           rustup toolchain install $env:RUST_TOOLCHAIN --profile minimal
           rustup default $env:RUST_TOOLCHAIN
 
+      # Caches: the engine's pinned upstreams (keyed by its lock), Cargo's crate downloads and the runtime's build
+      # (keyed by the lock files; the build cache is refreshed every run and restored from the newest), and the
+      # WolvenKit zip (keyed by its pinned SHA-256, and checked against it after a restore too).
+      - name: Cache engine upstreams
+        uses: actions/cache@v4
+        with:
+          path: deps/deckrunner-engine/upstream
+          key: engine-upstream-${{ hashFiles('deps/deckrunner-engine/upstreams.lock.json') }}
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-home-${{ hashFiles('stageB/deckrunner-runtime/Cargo.lock') }}
+          restore-keys: cargo-home-
+
+      - name: Cache runtime build
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/cargo
+          key: cargo-target-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('stageB/deckrunner-runtime/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: cargo-target-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('stageB/deckrunner-runtime/Cargo.lock') }}-
+
+      - name: Cache WolvenKit
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/wolvenkit.zip
+          key: wolvenkit-${{ env.WOLVENKIT_SHA256 }}
+
       - name: Skate engine sources (from Deckrunner's forks)
         run: |
           ./deps/deckrunner-engine/tools/fetch-upstreams.ps1
@@ -62,7 +94,7 @@ jobs:
       - name: WolvenKit (to compile wkprobe against)
         run: |
           $zip = Join-Path $env:RUNNER_TEMP 'wolvenkit.zip'
-          Invoke-WebRequest $env:WOLVENKIT_URL -OutFile $zip
+          if (-not (Test-Path $zip)) { Invoke-WebRequest $env:WOLVENKIT_URL -OutFile $zip }
           $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           if ($sha -ne $env:WOLVENKIT_SHA256) { throw "WolvenKit zip SHA-256 $sha does not match the pin" }
           $dir = Join-Path $env:RUNNER_TEMP 'wolvenkit'
@@ -77,7 +109,8 @@ jobs:
       - name: Runtime
         working-directory: stageB/deckrunner-runtime
         run: |
-          $env:RUSTFLAGS = "--remap-path-prefix=$env:GITHUB_WORKSPACE=src -C link-arg=/PDBALTPATH:%_PDB%"
+          # Rust embeds source paths in panic messages: the repository and the runner's home (Cargo's crate sources).
+          $env:RUSTFLAGS = "--remap-path-prefix=$env:GITHUB_WORKSPACE=src --remap-path-prefix=$env:USERPROFILE=~ -C link-arg=/PDBALTPATH:%_PDB%"
           $env:CARGO_TARGET_DIR = "$env:RUNNER_TEMP/cargo"
           cargo build --release --locked
 
