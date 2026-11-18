@@ -37,7 +37,8 @@ def main():
         t.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(f, t)
         copied.append(t)
-    problems = scan.scan(copied)
+    # Source may hold scripts (the release build's own .ps1); private paths and game data never.
+    problems = [x for x in scan.scan(copied) if 'a script-host file' not in x]
     print(f'{len(copied)} files staged')
     if problems:
         print('\n'.join(problems))
