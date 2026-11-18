@@ -18,6 +18,11 @@ target_include_directories(deckrunner_probe PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/third_party/physx-3.4.2-cdpr-include"
   "${CMAKE_CURRENT_SOURCE_DIR}/third_party/pxshared-3.4-include")
 target_compile_definitions(deckrunner_probe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX NDEBUG)
+# The lab's developer keys (probe, third-person cycling, pose test, cycle test); never in a release.
+option(DECKRUNNER_LAB_KEYS "Build the lab's developer hotkeys into the plugin" OFF)
+if(DECKRUNNER_LAB_KEYS)
+  target_compile_definitions(deckrunner_probe PRIVATE DECKRUNNER_LAB_KEYS)
+endif()
 target_compile_options(deckrunner_probe PRIVATE /EHsc /W3 /utf-8)
 target_link_libraries(deckrunner_probe PRIVATE RED4ext::SDK hid setupapi xaudio2 ole32)
 
