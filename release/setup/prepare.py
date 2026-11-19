@@ -166,6 +166,29 @@ class Prepare:
             ('verify', [], [], self.stage_verify),
         ]
 
+    def outputs(self, name):
+        """What a finished stage left behind. A receipt only counts while these are still there: --clean deletes the
+        disc files and the built archives, and the player may have deleted data, so a later run redoes such a stage
+        instead of failing in the next one. A tuple is alternatives: a built archive either still in the work folder
+        or already installed."""
+        mod = self.cp / ARCHIVE_REL
+        return {
+            'tools': [self.tools / 'skate-xma.exe', self.tools / 'xex_image.exe'],
+            'disc': [self.disc / 'default.xex'],
+            'convert': [self.assets / 'private/game.json', self.assets / 'private/skater.glb'],
+            'audio': [self.audio / 'manifest.json'],
+            'tuning': [self.audio / 'grain-tuning.bin', self.audio / 'component-tuning.bin'],
+            'wolvenkit': [self.wk / 'WolvenKit.RED4.dll'],
+            'dotnet': [self.dotnet_file],
+            'rigs': [self.rigs / r for r in RIGS],
+            'graph': [(self.work / 'graph' / ARCHIVES[0], mod / ARCHIVES[0])],
+            'board': [(self.work / 'board' / ARCHIVES[1], mod / ARCHIVES[1])],
+            'install': [mod / n for n in ARCHIVES],
+        }.get(name, [])
+
+    def outputs_present(self, name):
+        return all(any(Path(p).is_file() for p in (o if isinstance(o, tuple) else (o,))) for o in self.outputs(name))
+
     @staticmethod
     def input_id(p):
         p = Path(p)
@@ -290,7 +313,11 @@ class Prepare:
         mod = self.cp / ARCHIVE_REL
         mod.mkdir(parents=True, exist_ok=True)
         for name, w in zip(ARCHIVES, ('graph', 'board')):
-            shutil.copy2(self.work / w / name, mod / name)
+            # Freshly built, or (after --clean) the one a previous run installed, which its stage still vouches for.
+            if (self.work / w / name).is_file():
+                shutil.copy2(self.work / w / name, mod / name)
+            elif not (mod / name).is_file():
+                raise SystemExit(f'{name} is missing; run setup again with --redo {w}')
             installed.append(str(ARCHIVE_REL / name))
         (self.plugin / 'installed.json').write_text(json.dumps({'files': installed, 'data': str(PLUGIN_REL / 'data')}, indent=1),
                                                      encoding='utf-8')
@@ -317,7 +344,8 @@ class Prepare:
         for i, (name, files, inputs, fn) in enumerate(stages):
             receipt = self.receipts / f'{name}.json'
             key = self.key(files, inputs)
-            done = receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')).get('key') == key
+            done = (receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')).get('key') == key
+                    and self.outputs_present(name))
             if done and (redo_from is None or i < redo_from):
                 print(f'== [{i + 1}/{len(stages)}] {STEPS[name]}: done before', flush=True)
                 continue
