@@ -4,10 +4,11 @@ This folder is Deckrunner's plugin (the main file). It needs data that **Deckrun
 Skate 3 disc and your own Cyberpunk 2077 install: download Deckrunner Setup, extract it anywhere outside the game
 folder and run `Deckrunner Setup.cmd`. Setup's README has the details.
 
-- Start and stop skating: **Ctrl+Shift+F10**. Skate 3's controls are on the gamepad.
+- Start and stop skating: **Ctrl+Shift+F10**. You start on foot with the board in hand; **Y** gets on and off it.
+  Skate 3's controls are on the gamepad.
 - Settings: `deckrunner.ini` in this folder, made from `deckrunner.default.ini` the first time the game starts with
-  Deckrunner (the keys under `[keys]`, Skate 3's volume under `[audio]`, its difficulty under `[skate]`). Updates
-  never overwrite it.
+  Deckrunner: the keys under `[keys]`, Skate 3's volume under `[audio]`, its difficulty and preloading under `[skate]`.
+  Updates never overwrite it.
 - Bug reports: https://github.com/londonbrown/Deckrunner/issues
 
 Deckrunner is an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT RED. Licence: Apache-2.0

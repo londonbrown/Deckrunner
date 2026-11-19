@@ -40,6 +40,7 @@ using AudioPullFn = uint32_t (*)(const void*, uint32_t, float*, uint32_t, DkrAud
 using AudioPausedFn = uint32_t (*)(const void*, uint32_t);
 using AudioStatusFn = uint32_t (*)(const void*, DkrAudioStatus*);
 using SetDifficultyFn = uint32_t (*)(void*, uint32_t);
+using PreloadFn = uint32_t (*)(void*, const float*, const uint8_t*, uint32_t, const float*, float);
 
 struct Api
 {
@@ -59,10 +60,12 @@ struct Api
     CaptureFn capture = nullptr;  // ABI 9
     SetBodiesFn setBodies = nullptr;  // ABI 10
     SetDifficultyFn setDifficulty = nullptr;  // ABI 11
+    PreloadFn preload = nullptr;  // ABI 12
     skateaudio::Fns audio;  // ABI 7
 } g_api;
 bool g_parked = false;  // C5: the runtime keeps Skate loaded between rides
 std::string g_rig;  // C3: rig JSON for the next session
+std::string g_sentRig;  // the rig the runtime has (a later save may load the other V)
 
 void* g_rt = nullptr;
 float g_shift[3] = {};
@@ -173,18 +176,19 @@ bool LoadApi(LogFn log)
     g_api.capture = reinterpret_cast<CaptureFn>(get("dkr_capture"));
     g_api.setBodies = reinterpret_cast<SetBodiesFn>(get("dkr_set_bodies"));
     g_api.setDifficulty = reinterpret_cast<SetDifficultyFn>(get("dkr_set_difficulty"));
+    g_api.preload = reinterpret_cast<PreloadFn>(get("dkr_preload"));
     g_api.audio.configure = reinterpret_cast<AudioConfigureFn>(get("dkr_audio_configure"));
     g_api.audio.pull = reinterpret_cast<AudioPullFn>(get("dkr_audio_pull"));
     g_api.audio.setPaused = reinterpret_cast<AudioPausedFn>(get("dkr_audio_set_paused"));
     g_api.audio.status = reinterpret_cast<AudioStatusFn>(get("dkr_audio_status"));
     if (!g_api.abi || !g_api.create || !g_api.start || !g_api.step || !g_api.state || !g_api.wants || !g_api.install || !g_api.destroy ||
         !g_api.loadRig || !g_api.pose || !g_api.reference || !g_api.park || !g_api.snapshot || !g_api.capture || !g_api.setBodies ||
-        !g_api.setDifficulty)
+        !g_api.setDifficulty || !g_api.preload)
     {
         log("stage B: runtime DLL is missing exports");
         return false;
     }
-    if (g_api.abi() != 11) { Logf(log, "stage B: runtime ABI %u, expected 11", g_api.abi()); return false; }
+    if (g_api.abi() != 12) { Logf(log, "stage B: runtime ABI %u, expected 12", g_api.abi()); return false; }
     return true;
 }
 
@@ -311,11 +315,12 @@ bool Capture(LogFn log)
     return ok;
 }
 
-bool Start(const float v[3], float yaw, LogFn log)
+namespace
 {
-    if (g_rt && !g_parked) { log("stage B: already running (Ctrl+Shift+F10 stops it)"); return false; }
-    const bool resume = g_rt != nullptr;  // C5: Skate is still loaded from the last ride
-    if (!resume && !LoadApi(log)) return false;
+// V's surroundings for a session: the PhysX shift from V's capsule and the triangles within kRadius, gathered in one go on
+// the main thread (a few milliseconds). False (logged) when V's capsule can't be found.
+bool Gather(const float v[3], std::vector<float>& tris, std::vector<uint8_t>& flags, uint32_t& n, LogFn log)
+{
     float err = 0;
     uint32_t caps = 0;
     if (!probe::FindShift({v[0], v[1], v[2]}, g_shift, err, caps, &g_capsule))
@@ -325,37 +330,93 @@ bool Start(const float v[3], float yaw, LogFn log)
     }
     Logf(log, "stage B: PhysX shift (world = physx + shift) = (%.0f, %.0f, %.0f) from V's capsule (error %.3f m, %u capsules)",
          g_shift[0], g_shift[1], g_shift[2], err, caps);
-    std::vector<float> tris;
-    std::vector<uint8_t> flags;
     probe::Collector::Stats st;
-    // The first set is gathered in one go: Skate is about to spend ~8 s loading anyway.
-    const uint32_t n = probe::CollectTriangles({v[0], v[1], v[2]}, g_shift, kRadius, kMaxTriangles, tris, flags, &st);
+    n = probe::CollectTriangles({v[0], v[1], v[2]}, g_shift, kRadius, kMaxTriangles, tris, flags, &st);
     uint32_t physical = 0;
     for (auto f : flags) physical += f;
     Logf(log, "stage B: collected %u triangles within %.0f m (%u physical, %u detail) on the main thread: scene walk %.1f ms "
               "(%u of %u actors near, %u of them kinematic props with %u shapes), copy %.1f ms (%u meshes and height fields, %u skipped as freed)",
          n, kRadius, physical, n - physical, st.scanMs, st.actorsNear, st.actorsVisited, st.props, st.propShapes, st.extractMs, st.meshJobs, st.stale);
+    return true;
+}
+
+std::filesystem::path OutDir()
+{
     wchar_t local[MAX_PATH]{};
     GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
     const auto out = std::filesystem::path(local) / L"Deckrunner" / L"stageb";
     std::error_code ec;
     std::filesystem::create_directories(out, ec);
-    const std::string assets = AssetsPath();
-    if (!resume)
+    return out;
+}
+
+// The runtime, once per game: Skate's data, V's rig and Skate's sound banks (both load on the runtime's threads).
+bool Create(LogFn log)
+{
+    g_rt = g_api.create(AssetsPath().c_str(), Utf8(OutDir()).c_str());
+    if (!g_rt) { log("stage B: dkr_create failed"); return false; }
+    g_posted = 0;  // the new runtime counts its steps from zero
+    // C3: the rig is fitted first (milliseconds), so V's reference pose is available while Skate loads (about 8 s).
+    if (!g_rig.empty())
     {
-        g_rt = g_api.create(assets.c_str(), Utf8(out).c_str());
-        if (!g_rt) { log("stage B: dkr_create failed"); return false; }
-        g_posted = 0;  // the new runtime counts its steps from zero
-        // C3: the rig is fitted first (milliseconds), so V's reference pose is available while Skate loads (about 8 s).
-        if (!g_rig.empty()) Logf(log, "stage C3: rig %s %s", g_rig.c_str(), g_api.loadRig(g_rt, g_rig.c_str()) ? "sent to the runtime (its log says whether it fitted)" : "could not be sent");
-        // Skate audio: the sound banks load on the runtime's audio thread beside Skate (about 6 s).
-        skateaudio::Begin(g_rt, g_api.audio, log);
+        const bool sent = g_api.loadRig(g_rt, g_rig.c_str());
+        Logf(log, "stage C3: rig %s %s", g_rig.c_str(), sent ? "sent to the runtime (its log says whether it fitted)" : "could not be sent");
+        if (sent) g_sentRig = g_rig;
     }
+    // Skate audio: the sound banks load on the runtime's audio thread beside Skate (about 6 s).
+    skateaudio::Begin(g_rt, g_api.audio, log);
+    return true;
+}
+
+void SendDifficulty(LogFn log)
+{
     static const char* const kDifficulty[] = {"Easy", "Normal", "Hardcore", "Motorized"};
     const uint32_t difficulty = LoadDifficulty(log);
     Logf(log, "stage B: difficulty %s (deckrunner.ini [skate] difficulty=)%s", kDifficulty[difficulty],
          g_api.setDifficulty(g_rt, difficulty) ? "" : "; the runtime refused it");
-    if (!g_api.start(g_rt, tris.data(), flags.data(), n, v, yaw, 1))
+}
+} // namespace
+
+bool Preload(const float v[3], float yaw, LogFn log)
+{
+    if (g_rt) return false;
+    if (!LoadApi(log)) return false;
+    std::vector<float> tris;
+    std::vector<uint8_t> flags;
+    uint32_t n = 0;
+    if (!Gather(v, tris, flags, n, log) || !Create(log)) return false;
+    SendDifficulty(log);
+    if (!g_api.preload(g_rt, tris.data(), flags.data(), n, v, yaw))
+    {
+        log("stage B: dkr_preload failed; the first start loads Skate");
+        return false;
+    }
+    g_parked = true;  // what a ride leaves: the next Start resumes
+    Logf(log, "stage B: preloading Skate in the background at (%.2f, %.2f, %.2f) (deckrunner.ini [skate] preload=1), so the "
+              "first start is instant; runtime log in %s", v[0], v[1], v[2], Utf8(OutDir()).c_str());
+    return true;
+}
+
+bool Start(const float v[3], float yaw, LogFn log)
+{
+    if (g_rt && !g_parked) { log("stage B: already running (Ctrl+Shift+F10 stops it)"); return false; }
+    const bool resume = g_rt != nullptr;  // C5: Skate is still loaded from the last ride, or preloaded (#2)
+    if (!resume && !LoadApi(log)) return false;
+    std::vector<float> tris;
+    std::vector<uint8_t> flags;
+    uint32_t n = 0;
+    if (!Gather(v, tris, flags, n, log)) return false;
+    if (!resume && !Create(log)) return false;
+    // A loaded save may hold the other V (female or male rig) than the one the runtime was made with.
+    if (resume && !g_rig.empty() && g_rig != g_sentRig)
+    {
+        const bool sent = g_api.loadRig(g_rt, g_rig.c_str());
+        Logf(log, "stage C3: V's rig changed: %s %s", g_rig.c_str(), sent ? "sent to the runtime" : "could not be sent");
+        if (sent) g_sentRig = g_rig;
+    }
+    SendDifficulty(log);
+    // #2: no autopilot: the skater stands at V, off the board with it in hand, until the player gets on (Y).
+    if (!g_api.start(g_rt, tris.data(), flags.data(), n, v, yaw, 0))
     {
         log("stage B: dkr_start failed");
         return false;
@@ -368,8 +429,8 @@ bool Start(const float v[3], float yaw, LogFn log)
     g_start[0] = v[0], g_start[1] = v[1], g_start[2] = v[2];
     g_logTimer = 0;
     g_lastTick = 0;
-    Logf(log, "stage B: started at (%.2f, %.2f, %.2f) yaw %.1f with autopilot; assets %s; runtime log in %s", v[0], v[1], v[2], yaw,
-         assets.c_str(), Utf8(out).c_str());
+    Logf(log, "stage B: started at (%.2f, %.2f, %.2f) yaw %.1f, on foot with the board; assets %s; runtime log in %s", v[0], v[1], v[2], yaw,
+         AssetsPath().c_str(), Utf8(OutDir()).c_str());
     return true;
 }
 

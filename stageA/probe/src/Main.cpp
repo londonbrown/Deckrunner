@@ -306,6 +306,22 @@ bool StartSkater(const PlayerInfo& p)
     return true;
 }
 
+// #2: once the world has loaded, Skate loads in the background (about 8 s on the runtime's threads) and waits parked, so
+// the first Ctrl+Shift+F10 is instant. deckrunner.ini [skate] preload=0 turns it off: Skate then loads on the first start.
+void PreloadSkater(const PlayerInfo& p)
+{
+    if (!GetPrivateProfileIntW(L"skate", L"preload", 1, data::Ini().c_str()))
+    {
+        Log("stage B: no preload (deckrunner.ini [skate] preload=0); Skate loads on the first start");
+        return;
+    }
+    const std::string rig = stagec::RigFor(p.handle, &LogLine);
+    if (!data::Missing(rig).empty()) return;  // the first start says what's missing
+    stageb::SetRig(rig);
+    const float v[3] = {p.pos.X, p.pos.Y, p.pos.Z};
+    stageb::Preload(v, p.yaw, &LogLine);
+}
+
 void LeaveSkating(const PlayerInfo& p, const char* why)
 {
     if (stageb::Active()) stageb::Stop(&LogLine);
@@ -613,6 +629,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
             g_autoDone = true;
             RunProbe("auto");
             stagec::DumpRtti(g_out / L"c0-rtti.txt", GetPlayer().handle.instance, &LogLine);  // C0, read-only
+            if (const PlayerInfo p = GetPlayer(); p.ok && !stageb::Active() && !stagec::Active()) PreloadSkater(p);
         }
     }
     return false;
@@ -650,9 +667,9 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_keySkate = LoadKey(L"skate", "Ctrl+Shift+F10");
         g_keyCapture = LoadKey(L"capture", "Ctrl+Shift+F12");
 #ifdef DECKRUNNER_LAB_KEYS
-        Log("Deckrunner 0.30.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.31.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #else
-        Log("Deckrunner 0.30.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.31.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #endif
             g_keySkate.text.c_str(), g_keyCapture.text.c_str(), aSdk->runtime->major, aSdk->runtime->minor, aSdk->runtime->patch, added ? "added" : "FAILED",
             shield ? "attached" : "NOT attached (the engine's hide setters were not found or their code is not 2.5's)", g_out.c_str());
