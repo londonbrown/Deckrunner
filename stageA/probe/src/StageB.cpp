@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -38,6 +39,7 @@ using AudioConfigureFn = uint32_t (*)(void*, const char*, float);
 using AudioPullFn = uint32_t (*)(const void*, uint32_t, float*, uint32_t, DkrAudioEmitter*);
 using AudioPausedFn = uint32_t (*)(const void*, uint32_t);
 using AudioStatusFn = uint32_t (*)(const void*, DkrAudioStatus*);
+using SetDifficultyFn = uint32_t (*)(void*, uint32_t);
 
 struct Api
 {
@@ -56,6 +58,7 @@ struct Api
     ParkFn park = nullptr;
     CaptureFn capture = nullptr;  // ABI 9
     SetBodiesFn setBodies = nullptr;  // ABI 10
+    SetDifficultyFn setDifficulty = nullptr;  // ABI 11
     skateaudio::Fns audio;  // ABI 7
 } g_api;
 bool g_parked = false;  // C5: the runtime keeps Skate loaded between rides
@@ -169,18 +172,37 @@ bool LoadApi(LogFn log)
     g_api.park = reinterpret_cast<ParkFn>(get("dkr_park"));
     g_api.capture = reinterpret_cast<CaptureFn>(get("dkr_capture"));
     g_api.setBodies = reinterpret_cast<SetBodiesFn>(get("dkr_set_bodies"));
+    g_api.setDifficulty = reinterpret_cast<SetDifficultyFn>(get("dkr_set_difficulty"));
     g_api.audio.configure = reinterpret_cast<AudioConfigureFn>(get("dkr_audio_configure"));
     g_api.audio.pull = reinterpret_cast<AudioPullFn>(get("dkr_audio_pull"));
     g_api.audio.setPaused = reinterpret_cast<AudioPausedFn>(get("dkr_audio_set_paused"));
     g_api.audio.status = reinterpret_cast<AudioStatusFn>(get("dkr_audio_status"));
     if (!g_api.abi || !g_api.create || !g_api.start || !g_api.step || !g_api.state || !g_api.wants || !g_api.install || !g_api.destroy ||
-        !g_api.loadRig || !g_api.pose || !g_api.reference || !g_api.park || !g_api.snapshot || !g_api.capture || !g_api.setBodies)
+        !g_api.loadRig || !g_api.pose || !g_api.reference || !g_api.park || !g_api.snapshot || !g_api.capture || !g_api.setBodies ||
+        !g_api.setDifficulty)
     {
         log("stage B: runtime DLL is missing exports");
         return false;
     }
-    if (g_api.abi() != 10) { Logf(log, "stage B: runtime ABI %u, expected 10", g_api.abi()); return false; }
+    if (g_api.abi() != 11) { Logf(log, "stage B: runtime ABI %u, expected 11", g_api.abi()); return false; }
     return true;
+}
+
+// #6: Skate 3's difficulty from deckrunner.ini [skate] difficulty=, read at every start so a change applies on the next
+// ride without restarting the game. Easy (Skate's default, and Deckrunner's before 0.30.0) when missing or unknown.
+uint32_t LoadDifficulty(LogFn log)
+{
+    static const char* const kNames[] = {"easy", "normal", "hardcore", "motorized"};
+    wchar_t buf[64]{};
+    GetPrivateProfileStringW(L"skate", L"difficulty", L"", buf, 64, data::Ini().c_str());
+    std::string v;
+    for (const wchar_t* c = buf; *c; ++c)
+        if (*c != L' ' && *c != L'\t') v += static_cast<char>(*c < 128 ? tolower(*c) : '?');
+    if (v.empty()) return 0;
+    for (uint32_t i = 0; i < 4; ++i)
+        if (v == kNames[i]) return i;
+    Logf(log, "deckrunner.ini [skate] difficulty=%s is not easy, normal, hardcore or motorized; using easy", v.c_str());
+    return 0;
 }
 
 std::string AssetsPath()
@@ -329,6 +351,10 @@ bool Start(const float v[3], float yaw, LogFn log)
         // Skate audio: the sound banks load on the runtime's audio thread beside Skate (about 6 s).
         skateaudio::Begin(g_rt, g_api.audio, log);
     }
+    static const char* const kDifficulty[] = {"Easy", "Normal", "Hardcore", "Motorized"};
+    const uint32_t difficulty = LoadDifficulty(log);
+    Logf(log, "stage B: difficulty %s (deckrunner.ini [skate] difficulty=)%s", kDifficulty[difficulty],
+         g_api.setDifficulty(g_rt, difficulty) ? "" : "; the runtime refused it");
     if (!g_api.start(g_rt, tris.data(), flags.data(), n, v, yaw, 1))
     {
         log("stage B: dkr_start failed");

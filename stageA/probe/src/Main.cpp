@@ -650,9 +650,9 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_keySkate = LoadKey(L"skate", "Ctrl+Shift+F10");
         g_keyCapture = LoadKey(L"capture", "Ctrl+Shift+F12");
 #ifdef DECKRUNNER_LAB_KEYS
-        Log("Deckrunner 0.29.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.30.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #else
-        Log("Deckrunner 0.29.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.30.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #endif
             g_keySkate.text.c_str(), g_keyCapture.text.c_str(), aSdk->runtime->major, aSdk->runtime->minor, aSdk->runtime->patch, added ? "added" : "FAILED",
             shield ? "attached" : "NOT attached (the engine's hide setters were not found or their code is not 2.5's)", g_out.c_str());

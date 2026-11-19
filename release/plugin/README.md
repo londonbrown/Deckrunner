@@ -6,7 +6,8 @@ folder and run `Deckrunner Setup.cmd`. Setup's README has the details.
 
 - Start and stop skating: **Ctrl+Shift+F10**. Skate 3's controls are on the gamepad.
 - Settings: `deckrunner.ini` in this folder, made from `deckrunner.default.ini` the first time the game starts with
-  Deckrunner (the keys under `[keys]`, Skate 3's volume under `[audio]`). Updates never overwrite it.
+  Deckrunner (the keys under `[keys]`, Skate 3's volume under `[audio]`, its difficulty under `[skate]`). Updates
+  never overwrite it.
 - Bug reports: https://github.com/londonbrown/Deckrunner/issues
 
 Deckrunner is an unofficial fan project, unaffiliated with Electronic Arts or CD PROJEKT RED. Licence: Apache-2.0
