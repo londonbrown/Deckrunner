@@ -33,11 +33,14 @@ static AUDIO_ORIGIN: Mutex<Vec3> = Mutex::new(Vec3::ZERO);
 pub const GESTURES: [u32; 4] = [23, 7, 24, 22];
 
 /// Deckrunner's settings on a freshly loaded session, before its first activate.
+/// #6: Skate 3's physics_mode names, by index (`dkr_set_difficulty`).
+const DIFFICULTIES: [&str; 4] = ["easy", "normal", "hardcore", "motorized"];
+
 fn configure(s: &mut Session) {
     s.set_gestures(Some(GESTURES));
 }
 
-pub const ABI_VERSION: u32 = 10;  // 2: renamed from Skaterpunk (spk_* exports became dkr_*); 3: dkr_load_rig and the pose (C3); 4: the board (C3b); 5: the camera (C4); 6: dkr_park and warm restarts (C5); 7: Skate audio; 8: the worker's clock in DkrState (sub_tick, period, steps); 9: dkr_capture (P1-11); 10: dkr_set_bodies (P1-14)
+pub const ABI_VERSION: u32 = 11;  // 2: renamed from Skaterpunk (spk_* exports became dkr_*); 3: dkr_load_rig and the pose (C3); 4: the board (C3b); 5: the camera (C4); 6: dkr_park and warm restarts (C5); 7: Skate audio; 8: the worker's clock in DkrState (sub_tick, period, steps); 9: dkr_capture (P1-11); 10: dkr_set_bodies (P1-14); 11: dkr_set_difficulty (#6)
 pub const STATUS_IDLE: u32 = 0;
 pub const STATUS_LOADING: u32 = 1;
 pub const STATUS_ACTIVE: u32 = 2;
@@ -397,7 +400,7 @@ const SAFE_TICKS: u32 = 30;
 /// marker return), so a return soon after a bail, or a respawn more than a second after the wipeout, was taken for the
 /// other.
 /// The runtime's own version, in its log (0.24.1: P1-16, a marker return centred on the kept set's real middle).
-const RUNTIME_VERSION: &str = "0.24.2";
+const RUNTIME_VERSION: &str = "0.25.0";
 const LB: u16 = 0x0100;
 const DPAD_UP: u16 = 0x0001;
 const DPAD_DOWN: u16 = 0x0002;
@@ -842,6 +845,8 @@ enum Job {
     Park,
     Capture,
     Bodies { bodies: Vec<DkrBody>, tris: Vec<[Vec3; 3]> },
+    /// #6: Skate 3's physics_mode (0 easy, 1 normal, 2 hardcore, 3 motorized), for the session and the ones after it.
+    Difficulty(u32),
 }
 
 /// P1-14: the host's moving bodies as Skate takes them: triangles tagged per body (`SkateVRuntime::dynamic::DYNAMIC_TAG`,
@@ -988,6 +993,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
     let mut origin = Vec3::ZERO;
     let mut autopilot: Option<Autopilot> = None;
     let mut parked = false;  // C5: the session stays loaded between rides; steps are ignored while parked
+    let mut difficulty = 0u32;  // #6: Skate's physics_mode; Easy until the plugin sends the player's setting
     let mut audio_state = audio::map::State::default();  // Skate audio: the sound handlers' game variables
     let mut retarget: Option<retarget::Retarget> = None;  // C3: Skate's pose onto V's rig, once the plugin names the rig
     let mut skate_idx: Option<[usize; 24]> = None;
@@ -1079,6 +1085,13 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                 }
             }
             Job::Bodies { bodies, tris } => { bodies_due = Some((bodies, tris)); }
+            // #6: the engine picks its physics_mode tables by this index every frame, so a live session takes it at once.
+            Job::Difficulty(index) => {
+                difficulty = index;
+                let applied = session.as_mut().map(|s| s.set_difficulty(index));
+                log.line(&format!("difficulty {}{}", DIFFICULTIES.get(index as usize).copied().unwrap_or("?"),
+                                  match applied { Some(true) => " (live session)", Some(false) => " refused by the engine", None => "" }));
+            }
             Job::Park => {
                 parked = true;
                 capture_due = None;
@@ -1171,6 +1184,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                 match Session::new_tagged(&root, prep.tris, prep.tags, prep.rails, spawn_s, coords::skate_heading(heading))
                     .and_then(|mut s| {
                         configure(&mut s);
+                        s.set_difficulty(difficulty);
                         s.activate(spawn_s, coords::skate_heading(heading))?;
                         Ok(s)
                     })
@@ -1705,6 +1719,16 @@ pub unsafe extern "C" fn dkr_set_bodies(rt: *mut c_void, bodies: *const DkrBody,
     })
 }
 
+/// #6: Skate 3's difficulty (its physics_mode): 0 easy (the default), 1 normal, 2 hardcore, 3 motorized. Applies to the
+/// running session at once and to every session after it. Returns 1 when sent, 0 for an unknown index.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dkr_set_difficulty(rt: *mut c_void, index: u32) -> u32 {
+    guard(0, || {
+        let Some(r) = (unsafe { (rt as *const Runtime).as_ref() }) else { return 0 };
+        ((index as usize) < DIFFICULTIES.len() && r.send.send(Job::Difficulty(index)).is_ok()) as u32
+    })
+}
+
 /// Skate audio: starts SK8V's audio engine on the prepared cache (`cache_dir`: the folder holding `raw\audiofiles`,
 /// from SK8V's tools/prepare-skate-audio.py). Returns 1 when configured (loading continues on the audio thread; see
 /// `dkr_audio_status`).
@@ -1997,6 +2021,55 @@ mod tests {
         assert!(bare.as_ref().is_err_and(|e| e.contains("gesture")), "the d-pad should reach the gesture path: {bare:?}");
         let (ticks, states) = run(true).expect("with SK8V's gestures every d-pad press plays");
         println!("with gestures {GESTURES:?}: {ticks} ticks, states {states:?}");
+    }
+
+    /// #6: a session runs in each of Skate 3's physics modes, set before `activate` as the worker does, and switches mode
+    /// mid-ride (a resume with a changed deckrunner.ini). Pushes off on a flat road and rides for three seconds per mode.
+    /// DKR_ASSETS=skate-data/assets cargo test --release -- --ignored difficulty_modes --nocapture
+    #[test]
+    #[ignore]
+    fn difficulty_modes() {
+        let root = PathBuf::from(std::env::var("DKR_ASSETS").expect("set DKR_ASSETS"));
+        let mut tris = Vec::new();
+        for iy in -10..120 {
+            for ix in -5..5 {
+                let (x0, y0, x1, y1) = (ix as f32 * 2.0, iy as f32 * 2.0, ix as f32 * 2.0 + 2.0, iy as f32 * 2.0 + 2.0);
+                let p = |x: f32, y: f32| Vec3::new(x, y, 0.0);
+                tris.push(Tri { p: [p(x0, y0), p(x1, y0), p(x1, y1)], physical: true });
+                tris.push(Tri { p: [p(x0, y0), p(x1, y1), p(x0, y1)], physical: true });
+            }
+        }
+        let spawn_s = coords::to_skate(Vec3::new(0.0, 0.0, 0.1)).to_array();
+        let ride = |s: &mut Session, ticks: u32| -> Result<Vec<String>, String> {
+            let mut seen = Vec::new();
+            for t in 0..ticks {
+                let buttons = if t % 60 < 15 { A } else { 0 };  // push now and then
+                s.tick(Controls { buttons, ..Controls::default() })?;
+                let st = s.pose().state;
+                if seen.last() != Some(&st) { seen.push(st); }
+            }
+            Ok(seen)
+        };
+        let mut last = None;
+        for (index, name) in DIFFICULTIES.iter().enumerate() {
+            let p = prepare(&tris, Vec3::ZERO, &mut Default::default());
+            let mut s = Session::new_tagged(&root, p.tris, p.tags, p.rails, spawn_s, coords::skate_heading(0.0)).expect("session");
+            configure(&mut s);
+            assert!(s.set_difficulty(index as u32));
+            s.activate(spawn_s, coords::skate_heading(0.0)).expect("activate");
+            let seen = ride(&mut s, 180).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(s.difficulty(), index as u32, "{name}");
+            println!("{name}: {} ticks, states {seen:?}", s.pose().tick);
+            last = Some(s);
+        }
+        let mut s = last.unwrap();
+        assert!(!s.set_difficulty(DIFFICULTIES.len() as u32), "an unknown mode is refused");
+        for index in [0u32, 2, 1] {
+            assert!(s.set_difficulty(index));
+            let seen = ride(&mut s, 120).unwrap_or_else(|e| panic!("live switch to {}: {e}", DIFFICULTIES[index as usize]));
+            assert_eq!(s.difficulty(), index);
+            println!("live {}: states {seen:?}", DIFFICULTIES[index as usize]);
+        }
     }
 
     /// Skate 3's session marker (fifth test: LB + d-pad down played a taunt and nothing came back): roll on a flat road,
