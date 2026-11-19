@@ -2453,6 +2453,9 @@ void InstallCameraHook(const v1::Sdk* sdk, v1::PluginHandle handle, LogFn log)
 bool Active() { return g.mode != Mode::Off || !g_ours.ids.empty() || g_head.pending || AmmPending(); }
 
 
+// #3: the on-foot restrictions are in place (the weapon wheel section at the end of this file).
+bool g_wheelOnFoot = false;
+
 // ----- C5: lifecycle (0.15.0) -----
 bool EnterSkating(const Handle<IScriptable>& player, LogFn log)
 {
@@ -2464,6 +2467,7 @@ bool EnterSkating(const Handle<IScriptable>& player, LogFn log)
     ApplyRestrictions(player, log);
     g.mode = Mode::Restricted;
     g_headOff = false;  // 0.26.0: every ride starts with V's head on
+    g_wheelOnFoot = false;  // #3: all of the restrictions are on until the skater is on foot
     log("stage C5: skating ON (third person and the skating restrictions in one step)");
     return true;
 }
@@ -2472,6 +2476,7 @@ void ExitSkating(const Handle<IScriptable>& player, LogFn log, const char* why)
 {
     if (g.mode != Mode::Off) ExitAll(player, log, why);
     g_follow = FollowState{};
+    g_wheelOnFoot = false;  // #3: the next ride starts with every restriction on
 }
 
 const char* ExitReason(const Handle<IScriptable>& player)
@@ -3311,4 +3316,183 @@ void Frame(const Handle<IScriptable>& player, LogFn log)
     }
     if (g.frames % 120 == 0) Snapshot(player, log, g.mode == Mode::Restricted ? "restricted" : "third person", false);
 }
+// ----- #3: the skateboard in the weapon wheel (0.32.0) -----
+// The item is Items.Deckrunner_Skateboard, a copy of the knuckles defined by r6\tweaks\deckrunner\skateboard.yaml
+// (TweakXL; its name comes from ArchiveXL). Without them there is no item, and the key works as before. The game's rules,
+// from its scripts (tools\redmod\scripts): the wheel opens unless V has the NoRadialMenus (or NoWeaponWheel) tag
+// (QuickSlotsTransitions), and applies a pick through a DrawItemRequest, which it refuses outright under NoCombat
+// (RadialWheelController.DrawItem). EquipmentSystemPlayerData.DrawItem then makes the pick the Weapon area's active item
+// before it checks NoWeapons, which only stops the draw itself. So on foot NoCombat and NoRadialMenus come off and the
+// wheel works, NoWeapons stays (a tap of Y draws nothing: UpperBodyTransition's QueueActionBlocked), and a pick shows up
+// as the active item. NoCombat also carries NoGrenadeOrGadget, which goes on by itself on foot; its NoQuickHacks needs
+// the scanner, which NoScanning keeps off. Riding, all of the skating restrictions are on, as before.
+namespace
+{
+constexpr const char* kBoardItem = "Items.Deckrunner_Skateboard";
+constexpr const char* kBoardTag = "Deckrunner";  // in the item's tags (skateboard.yaml)
+constexpr const char* kOnFootOff[] = {"GameplayRestriction.NoRadialMenus", "GameplayRestriction.NoCombat"};
+constexpr const char* kOnFootOn = "GameplayRestriction.NoGrenadeOrGadget";
+uintptr_t g_boardChecked = 0;  // the V object the skateboard was last given or found on
+
+bool EnumValue(const char* enumName, const char* valueName, int64_t& out)
+{
+    auto* e = CRTTISystem::Get()->GetEnum(CName(enumName));
+    if (!e) return false;
+    const CName v(valueName);
+    for (uint32_t i = 0; i < e->hashList.size() && i < e->valueList.size(); ++i)
+        if (e->hashList[i] == v) { out = e->valueList[i]; return true; }
+    return false;
+}
+
+Handle<IScriptable> EquipmentSys()
+{
+    Handle<IScriptable> sys;
+    CClass* sc = Cls("gameScriptableSystemsContainer");
+    CBaseFunction* get = Func(sc, "Get");
+    IScriptable* container = nullptr;
+    if (!SelfFor(sc, get, container) || !ParamIs(get, 0, "CName")) return sys;
+    CName name("EquipmentSystem");
+    Call(container, get, &sys, {&name});
+    return sys;
+}
+
+bool ApplyEffect(const Handle<IScriptable>& player, const char* id)
+{
+    CClass* sc = Cls("gameStatusEffectSystem");
+    CBaseFunction* apply = Func(sc, "ApplyStatusEffect");
+    IScriptable* self = nullptr;
+    alignas(16) uint8_t eid[16] = {};
+    if (!SelfFor(sc, apply, self) || !ParamIs(apply, 0, "entEntityID") || !ParamIs(apply, 1, "TweakDBID") || !EntityIdOf(player.instance, eid))
+        return false;
+    TweakDBID tdb(id);
+    uint32_t one = 1;
+    bool savable = false, result = false;
+    Call(self, apply, &result, {eid, &tdb, nullptr, nullptr, ParamIs(apply, 4, "Uint32") ? &one : nullptr, nullptr,
+                                ParamIs(apply, 6, "Bool") ? &savable : nullptr});
+    return result;
+}
+
+TweakDBID RecordOf(const uint8_t (&id)[16])
+{
+    TweakDBID rec;
+    if (CBaseFunction* getTdb = Func(Cls("gameItemID"), "GetTDBID")) Call(nullptr, getTdb, &rec, {const_cast<uint8_t*>(id)});
+    return rec;
+}
+} // namespace
+
+bool BoardItemDefined() { return RecordExists(kBoardItem); }
+
+void EnsureBoardItem(const Handle<IScriptable>& player, LogFn log)
+{
+    if (!player.instance || reinterpret_cast<uintptr_t>(player.instance) == g_boardChecked) return;
+    g_boardChecked = reinterpret_cast<uintptr_t>(player.instance);
+    if (!BoardItemDefined())
+    {
+        log("weapon wheel: Items.Deckrunner_Skateboard isn't defined (TweakXL and ArchiveXL aren't installed, or Deckrunner's "
+            "r6\\tweaks file is missing), so there's no skateboard item; the skate key works as before");
+        return;
+    }
+    CClass* tc = Cls("gameTransactionSystem");
+    CBaseFunction *count = Func(tc, "GetItemQuantityByTag"), *give = Func(tc, "GiveItemByTDBID");
+    IScriptable* ts = nullptr;
+    if (!SelfFor(tc, give, ts) || !count) { log("weapon wheel: the transaction system is unavailable; no skateboard given"); return; }
+    auto* pl = const_cast<Handle<IScriptable>*>(&player);
+    CName tag(kBoardTag);
+    int32_t have = 0;
+    Call(ts, count, &have, {pl, &tag});
+    if (have > 0) { Logf(log, "weapon wheel: V has the skateboard (%d)", have); return; }
+    TweakDBID rec(kBoardItem);
+    int32_t one = 1;
+    bool given = false;
+    Call(ts, give, &given, {pl, &rec, &one});
+    Logf(log, "weapon wheel: skateboard %s; equip it in a weapon slot (Inventory, Weapons) to have it in the weapon wheel",
+         given ? "given to V" : "could NOT be given");
+}
+
+Held InRightHand(const Handle<IScriptable>& player)
+{
+    CClass* tc = Cls("gameTransactionSystem");
+    CBaseFunction* inSlot = Func(tc, "GetItemInSlot");
+    IScriptable* ts = nullptr;
+    if (!player.instance || !SelfFor(tc, inSlot, ts)) return Held::Nothing;
+    TweakDBID slot("AttachmentSlots.WeaponRight");
+    Handle<IScriptable> item;
+    Call(ts, inSlot, &item, {const_cast<Handle<IScriptable>*>(&player), &slot});
+    if (!item.instance) return Held::Nothing;
+    alignas(16) uint8_t id[16] = {};
+    if (!Call(item.instance, Func(item.instance->GetType(), "GetItemID"), id, {})) return Held::Nothing;
+    return RecordOf(id) == TweakDBID(kBoardItem) ? Held::Board : Held::Other;
+}
+
+bool ActiveWeapon(const Handle<IScriptable>& player, ItemId& out)
+{
+    out = ItemId{};
+    Handle<IScriptable> sys = EquipmentSys();
+    int64_t weapon = 0;
+    if (!player.instance || !sys.instance || !EnumValue("gamedataEquipmentArea", "Weapon", weapon)) return false;
+    CBaseFunction* active = Func(sys.instance->GetType(), "GetActiveItem");
+    if (!active || !ParamIs(active, 1, "gamedataEquipmentArea")) return false;
+    alignas(16) uint8_t id[16] = {};
+    bool left = false;
+    if (!Call(sys.instance, active, id, {const_cast<Handle<IScriptable>*>(&player), &weapon, &left})) return false;
+    std::memcpy(out.bytes, id, sizeof id);
+    const TweakDBID rec = RecordOf(id);
+    out.board = rec == TweakDBID(kBoardItem);
+    out.valid = rec.value != 0;
+    return true;
+}
+
+bool DrawWeapon(const Handle<IScriptable>& player, const ItemId& item, LogFn log)
+{
+    CClass* rc = Cls("DrawItemRequest");
+    Handle<IScriptable> sys = EquipmentSys();
+    CProperty* owner = rc ? Prop(rc, "owner") : nullptr;
+    CProperty* itemId = rc ? Prop(rc, "itemID") : nullptr;
+    CBaseFunction* queue = sys.instance ? Func(sys.instance->GetType(), "QueueRequest") : nullptr;
+    if (!player.instance || !item.valid || !owner || !itemId || !queue)
+    {
+        log("weapon wheel: can't ask the game to draw the picked weapon (DrawItemRequest unavailable)");
+        return false;
+    }
+    Handle<IScriptable> req(static_cast<IScriptable*>(rc->CreateInstance(true)));
+    auto* base = reinterpret_cast<uint8_t*>(req.instance);
+    const std::string type = TypeName(owner->type);
+    if (type.rfind("whandle:", 0) == 0)
+    {
+        WeakHandle<IScriptable> w(player);
+        owner->type->Assign(base + owner->valueOffset, &w);
+    }
+    else if (type.rfind("handle:", 0) == 0) owner->type->Assign(base + owner->valueOffset, &player);
+    else return false;
+    itemId->type->Assign(base + itemId->valueOffset, const_cast<uint8_t*>(item.bytes));
+    const bool ok = Call(sys.instance, queue, nullptr, {&req});
+    Logf(log, "weapon wheel: drawing the weapon picked in the wheel: %s", ok ? "requested" : "FAILED");
+    return ok;
+}
+
+void SetOnFoot(const Handle<IScriptable>& player, bool onFoot, LogFn log)
+{
+    if (g.mode != Mode::Restricted || !player.instance || onFoot == g_wheelOnFoot) return;
+    g_wheelOnFoot = onFoot;
+    std::string done;
+    for (const char* id : kOnFootOff)
+    {
+        const bool ok = onFoot ? RemoveEffect(player, id) : ApplyEffect(player, id);
+        done += std::string(" ") + (std::strchr(id, '.') + 1) + (ok ? "" : " (not accepted)");
+    }
+    if (onFoot)
+    {
+        const bool ok = ApplyEffect(player, kOnFootOn);
+        if (ok && std::find(g_ours.ids.begin(), g_ours.ids.end(), kOnFootOn) == g_ours.ids.end()) g_ours.ids.push_back(kOnFootOn);
+        Logf(log, "weapon wheel: on foot: a held Y opens the wheel (removed%s; added NoGrenadeOrGadget%s)", done.c_str(), ok ? "" : " (not accepted)");
+    }
+    else
+    {
+        const bool ok = RemoveEffect(player, kOnFootOn);
+        Logf(log, "weapon wheel: riding: the wheel is off again (applied%s; removed NoGrenadeOrGadget%s)", done.c_str(), ok ? "" : " (not accepted)");
+    }
+    g_ours.appliedAt = NowMs();  // RestrictionsLost waits for them to land, as after entry
+}
+
+bool OnFootRestrictions() { return g.mode == Mode::Restricted && g_wheelOnFoot; }
 } // namespace stagec
