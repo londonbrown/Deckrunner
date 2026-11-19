@@ -18,6 +18,16 @@ target_include_directories(deckrunner_probe PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/third_party/physx-3.4.2-cdpr-include"
   "${CMAKE_CURRENT_SOURCE_DIR}/third_party/pxshared-3.4-include")
 target_compile_definitions(deckrunner_probe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX NDEBUG)
+# One version: the release's, with the commit the build is from. tools/release/ci-build.ps1 passes both (the version
+# from the tag); a lab or local build says 0.0.0-dev, so it can't pass for a release.
+set(DECKRUNNER_VERSION "0.0.0-dev" CACHE STRING "Deckrunner's release version (ci-build.ps1 passes the tag's)")
+set(DECKRUNNER_COMMIT "local" CACHE STRING "The commit the build is from (ci-build.ps1 passes it)")
+if(NOT DECKRUNNER_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+  message(FATAL_ERROR "DECKRUNNER_VERSION ${DECKRUNNER_VERSION} is not major.minor.patch[-suffix]")
+endif()
+target_compile_definitions(deckrunner_probe PRIVATE DECKRUNNER_VERSION="${DECKRUNNER_VERSION}"
+  DECKRUNNER_COMMIT="${DECKRUNNER_COMMIT}" DECKRUNNER_VERSION_MAJOR=${CMAKE_MATCH_1}
+  DECKRUNNER_VERSION_MINOR=${CMAKE_MATCH_2} DECKRUNNER_VERSION_PATCH=${CMAKE_MATCH_3})
 # The lab's developer keys (probe, third-person cycling, pose test, cycle test); never in a release.
 option(DECKRUNNER_LAB_KEYS "Build the lab's developer hotkeys into the plugin" OFF)
 if(DECKRUNNER_LAB_KEYS)

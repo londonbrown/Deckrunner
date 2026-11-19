@@ -806,9 +806,9 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_keySkate = LoadKey(L"skate", "Ctrl+Shift+F10");
         g_keyCapture = LoadKey(L"capture", "Ctrl+Shift+F12");
 #ifdef DECKRUNNER_LAB_KEYS
-        Log("Deckrunner 0.32.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner " DECKRUNNER_VERSION " (" DECKRUNNER_COMMIT ", lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #else
-        Log("Deckrunner 0.32.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner " DECKRUNNER_VERSION " (" DECKRUNNER_COMMIT ") loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #endif
             g_keySkate.text.c_str(), g_keyCapture.text.c_str(), aSdk->runtime->major, aSdk->runtime->minor, aSdk->runtime->patch, added ? "added" : "FAILED",
             shield ? "attached" : "NOT attached (the engine's hide setters were not found or their code is not 2.5's)", g_out.c_str());
@@ -820,7 +820,8 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Deckrunner";
     aInfo->author = L"Deckrunner";
-    aInfo->version = RED4EXT_V1_SEMVER(0, 26, 3);
+    // The release version (CMakeLists.txt: DECKRUNNER_VERSION, from the tag in a release build; 0.0.0 in the lab).
+    aInfo->version = RED4EXT_V1_SEMVER(DECKRUNNER_VERSION_MAJOR, DECKRUNNER_VERSION_MINOR, DECKRUNNER_VERSION_PATCH);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_2_50;  // refuse to load on anything but 2.5 (3.0.88.46235)
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

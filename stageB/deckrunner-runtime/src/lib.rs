@@ -406,8 +406,11 @@ const SAFE_TICKS: u32 = 30;
 /// 0.24.0: up to 0.23.1 the split was by time instead (a teleport within 60 ticks of a wipeout was a respawn, any other a
 /// marker return), so a return soon after a bail, or a respawn more than a second after the wipeout, was taken for the
 /// other.
-/// The runtime's own version, in its log (0.24.1: P1-16, a marker return centred on the kept set's real middle).
-const RUNTIME_VERSION: &str = "0.26.0";
+/// The release version and the commit this build is from, in its log: DKR_VERSION and DKR_COMMIT at build time
+/// (tools/release/ci-build.ps1 sets both; the version comes from the tag). A lab or local build says 0.0.0-dev, so it
+/// can't pass for a release. Up to 0.1.3 this was a count of lab builds (0.26.0 last).
+const RUNTIME_VERSION: &str = match option_env!("DKR_VERSION") { Some(v) => v, None => "0.0.0-dev" };
+const RUNTIME_COMMIT: &str = match option_env!("DKR_COMMIT") { Some(v) => v, None => "local" };
 const LB: u16 = 0x0100;
 const DPAD_UP: u16 = 0x0001;
 const DPAD_DOWN: u16 = 0x0002;
@@ -1596,7 +1599,7 @@ pub unsafe extern "C" fn dkr_create(assets: *const c_char, out_dir: *const c_cha
         let log = Arc::new(Log(Mutex::new(std::fs::OpenOptions::new().create(true).append(true).open(out.join("deckrunner-runtime.log")).ok())));
         let hook_log = log.clone();
         std::panic::set_hook(Box::new(move |info| hook_log.line(&format!("PANIC: {info}"))));
-        log.line(&format!("=== new session: deckrunner runtime {RUNTIME_VERSION}, ABI {ABI_VERSION}; assets {}{}", root.display(),
+        log.line(&format!("=== new session: deckrunner runtime {RUNTIME_VERSION} ({RUNTIME_COMMIT}), ABI {ABI_VERSION}; assets {}{}", root.display(),
                           if pruned > 0 { format!("; {pruned} old captures and traces removed") } else { String::new() }));
         let shared = Arc::new(Mutex::new(Shared { state: DkrState::default(), wants_collision: None, pose: DkrPose::default(), reference: DkrPose::default() }));
         let (send, receive) = mpsc::channel();

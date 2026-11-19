@@ -42,12 +42,16 @@ $wk = Join-Path $Work 'wolvenkit'
 if (-not (Test-Path (Join-Path $wk 'WolvenKit.RED4.dll'))) { Expand-Archive $zip $wk -Force }
 $env:WOLVENKIT_DIR = $wk
 
-Step 'Plugin'
+# One version in both DLLs and their logs: the release's (from the tag), with the commit it's built from.
+$Commit = (git -C $Repo rev-parse --short=7 HEAD).Trim()
+
+Step "Plugin ($Version, $Commit)"
 $probe = Join-Path $Work 'probe'
-cmake -S "$Repo/stageA/probe" -B $probe -A x64
+cmake -S "$Repo/stageA/probe" -B $probe -A x64 "-DDECKRUNNER_VERSION=$Version" "-DDECKRUNNER_COMMIT=$Commit"
 cmake --build $probe --config Release --target deckrunner_probe
 
-Step 'Runtime'
+Step "Runtime ($Version, $Commit)"
+$env:DKR_VERSION = $Version; $env:DKR_COMMIT = $Commit
 # Rust embeds source paths in panic messages: remap the checkout and the home folder (Cargo's crate sources).
 $env:RUSTFLAGS = "--remap-path-prefix=$Repo=src --remap-path-prefix=$HOME=~ -C link-arg=/PDBALTPATH:%_PDB%"
 $env:CARGO_TARGET_DIR = Join-Path $Work 'cargo'
