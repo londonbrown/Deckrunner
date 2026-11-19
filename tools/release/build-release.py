@@ -49,8 +49,9 @@ DONOR_PATHS = ['tools/asset_pipeline', 'tools/owned_game', 'tools/vendor/skate3_
                'tools/extract_session_marker.py', 'tools/install_prepared_hud.py', 'tools/prepare_hud.py',
                'tools/prepare_runtime_huds.py']
 DONOR_COMMIT = 'cb7968930f14dad38457e98720d1a274e469eec2'
-# deps/deckrunner-engine: Deckrunner's fork of SK8V 1.1.10, its pins pointed at Deckrunner's forks.
-ENGINE_COMMIT = 'd7c1d01b02c499dc826e87c47525a76dea1b66ce'
+# deps/deckrunner-engine: Deckrunner's fork of SK8V 1.1.10, its pins pointed at Deckrunner's forks, with overlay patch
+# 0050 (the session marker for the HUD; no setup file changes).
+ENGINE_COMMIT = '373fd2d9c9a56148d0aa0d2fa13a22a72b8ebc43'
 
 
 def copy(src, dst):
