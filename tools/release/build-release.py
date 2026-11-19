@@ -33,7 +33,7 @@ GPL3 = Path(__file__).with_name('licenses') / 'GPL-3.0.txt'  # the canonical GNU
 GPL3_SHA = '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986'
 WKPROBE_FILES = ['wkprobe.dll', 'wkprobe.deps.json', 'wkprobe.runtimeconfig.json']
 # What the plugin file (Deckrunner's main file on Nexus) may hold: the two DLLs, the ini and text.
-PLUGIN_SUFFIXES = {'.dll', '.ini', '.md', '.txt', '', '.yaml', '.xl', '.archive'}
+PLUGIN_SUFFIXES = {'.dll', '.ini', '.md', '.txt', '', '.yaml', '.xl', '.archive', '.reds'}
 # #3: the skateboard in the weapon wheel, for players with TweakXL and ArchiveXL: its record (r6\tweaks) and its name
 # and description, an archive built here by wkprobe from Deckrunner's own JSON (the one archive a release may hold).
 ITEMS_ARCHIVE = 'archive/pc/mod/deckrunner_items.archive'
@@ -109,6 +109,9 @@ def main():
     copy(rel / 'deckrunner.ini', plugin / 'deckrunner.default.ini')
     copy(rel / 'plugin/README.md', plugin / 'README.md')
     copy(rel / 'plugin/r6/tweaks/deckrunner/skateboard.yaml', plugin_out / 'r6/tweaks/deckrunner/skateboard.yaml')
+    # The scripts: DeckrunnerHud's natives, the weapon wheel's pick while skating (redscript) and the HUD (Codeware).
+    for f in sorted((rel / 'plugin/r6/scripts/deckrunner').glob('*.reds')):
+        copy(f, plugin_out / 'r6/scripts/deckrunner' / f.name)
     copy(rel / 'plugin/archive/deckrunner_items.archive.xl', plugin_out / (ITEMS_ARCHIVE + '.xl'))
     for f in ('LICENSE', 'NOTICE'):
         copy(rel / f, plugin / f)

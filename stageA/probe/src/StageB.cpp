@@ -41,6 +41,7 @@ using AudioPausedFn = uint32_t (*)(const void*, uint32_t);
 using AudioStatusFn = uint32_t (*)(const void*, DkrAudioStatus*);
 using SetDifficultyFn = uint32_t (*)(void*, uint32_t);
 using PreloadFn = uint32_t (*)(void*, const float*, const uint8_t*, uint32_t, const float*, float);
+using HudFn = uint32_t (*)(const void*, DkrHud*);
 
 struct Api
 {
@@ -61,6 +62,7 @@ struct Api
     SetBodiesFn setBodies = nullptr;  // ABI 10
     SetDifficultyFn setDifficulty = nullptr;  // ABI 11
     PreloadFn preload = nullptr;  // ABI 12
+    HudFn hud = nullptr;  // ABI 13
     skateaudio::Fns audio;  // ABI 7
 } g_api;
 bool g_parked = false;  // C5: the runtime keeps Skate loaded between rides
@@ -177,18 +179,19 @@ bool LoadApi(LogFn log)
     g_api.setBodies = reinterpret_cast<SetBodiesFn>(get("dkr_set_bodies"));
     g_api.setDifficulty = reinterpret_cast<SetDifficultyFn>(get("dkr_set_difficulty"));
     g_api.preload = reinterpret_cast<PreloadFn>(get("dkr_preload"));
+    g_api.hud = reinterpret_cast<HudFn>(get("dkr_get_hud"));
     g_api.audio.configure = reinterpret_cast<AudioConfigureFn>(get("dkr_audio_configure"));
     g_api.audio.pull = reinterpret_cast<AudioPullFn>(get("dkr_audio_pull"));
     g_api.audio.setPaused = reinterpret_cast<AudioPausedFn>(get("dkr_audio_set_paused"));
     g_api.audio.status = reinterpret_cast<AudioStatusFn>(get("dkr_audio_status"));
     if (!g_api.abi || !g_api.create || !g_api.start || !g_api.step || !g_api.state || !g_api.wants || !g_api.install || !g_api.destroy ||
         !g_api.loadRig || !g_api.pose || !g_api.reference || !g_api.park || !g_api.snapshot || !g_api.capture || !g_api.setBodies ||
-        !g_api.setDifficulty || !g_api.preload)
+        !g_api.setDifficulty || !g_api.preload || !g_api.hud)
     {
         log("stage B: runtime DLL is missing exports");
         return false;
     }
-    if (g_api.abi() != 12) { Logf(log, "stage B: runtime ABI %u, expected 12", g_api.abi()); return false; }
+    if (g_api.abi() != 14) { Logf(log, "stage B: runtime ABI %u, expected 14", g_api.abi()); return false; }
     return true;
 }
 
@@ -216,6 +219,12 @@ std::string AssetsPath()
 } // namespace
 
 bool Active() { return g_rt != nullptr && !g_parked; }
+
+bool Hud(DkrHud& out)
+{
+    out = DkrHud{};
+    return Active() && g_api.hud && g_api.hud(g_rt, &out) != 0;
+}
 
 // P0-2: the runtime drops a session whose tick failed, so the next start reloads Skate (a few seconds) instead of
 // resuming. Kept here so the log says so; the first in-game ride logged "resuming (no reload)" over a reload.

@@ -31,6 +31,7 @@
 
 #include "Audio.hpp"
 #include "Data.hpp"
+#include "Hud.hpp"
 #include "Keys.hpp"
 #include "Pad.hpp"
 #include "PhysxProbe.hpp"
@@ -437,19 +438,18 @@ void CycleStep()
 // ----- #3: the skateboard in the weapon wheel (0.32.0) -----
 // Picking the skateboard in the weapon wheel draws it, and a drawn skateboard starts skating (the restrictions then
 // empty V's hands). While skating on foot the wheel opens on a held Y (Wheel.hpp keeps that press from Skate) and stays
-// open until a pick or a close, as the game's wheel does: A (or the left mouse button) applies the highlighted slot and
-// shuts it, B (or the right mouse button) shuts it with nothing picked. A pick leaves skating, and a weapon other than
-// the skateboard is drawn once the restrictions are gone; a close keeps the ride going. Skate gets no input while the
-// wheel is open. Ctrl+Shift+F10 works as before throughout.
+// open until a pick or a close, as the game's wheel does. wheel.reds hands the pick over from the wheel's own DrawItem
+// (hud::TakePick): it leaves skating, and a weapon other than the skateboard is drawn once the restrictions are gone; a
+// close keeps the ride going. Skate gets no input while the wheel is open. Without redscript (no wheel.reds) the wheel
+// stays shut while skating. Ctrl+Shift+F10 works as before throughout.
 wheel::YSplit g_ysplit;
 struct WheelState
 {
     double footSince = -1;        // when the skater's on-foot state last changed (the restrictions follow it after a moment)
     bool foot = false;
     bool open = false;            // the game's weapon wheel is open (its radial_wheel_open fact)
-    bool selectDown = false;      // A or the left mouse button, as last seen while it was open
-    double pickAt = -1;           // when A or the left mouse button went down while it was open
     uint16_t mask = 0;            // buttons still held from the wheel, kept from Skate until they're let go
+    stagec::ItemId pick;          // the wheel's pick (wheel.reds)
     double decideAt = -1;         // a pick to act on: leave skating then
     stagec::ItemId draw;          // a weapon to draw once the skating restrictions are gone
     double drawFrom = -1;
@@ -521,7 +521,7 @@ void WheelRide(stageb::DkrPad& pad, double now)
         if (foot != g_wheel.foot) g_wheel.foot = foot, g_wheel.footSince = now;
         if (g_wheel.footSince >= 0 && now - g_wheel.footSince > 0.15)
         {
-            stagec::SetOnFoot(p.handle, foot, &LogLine);
+            stagec::SetOnFoot(p.handle, foot && stagec::WheelScriptPresent(), &LogLine);
             g_wheel.footSince = -1;
         }
     }
@@ -529,18 +529,16 @@ void WheelRide(stageb::DkrPad& pad, double now)
     wheel::Event ev;
     pad.buttons = g_ysplit.Filter(pad.buttons, now, stagec::OnFootRestrictions(), ev);
     if (ev == wheel::Event::HoldStart) Log("weapon wheel: Y held on foot: the game's weapon wheel (Skate doesn't get this press)");
-    constexpr uint16_t kA = 0x1000;
+    uint8_t picked[16];
+    if (hud::TakePick(picked) && g_wheel.decideAt < 0) g_wheel.pick = stagec::ItemFromBytes(picked), g_wheel.decideAt = now + 0.05;
     const int open = stagec::OnFootRestrictions() || g_wheel.open ? stagec::RadialWheelOpen() : 0;
-    const bool select = (raw & kA) || (GameFocused() && (GetAsyncKeyState(VK_LBUTTON) & 0x8000));
     if (open == 1)
     {
         if (!g_wheel.open)
         {
-            g_wheel.open = true, g_wheel.pickAt = -1, g_wheel.selectDown = select;
+            g_wheel.open = true;
             Log("weapon wheel: open (a pick leaves skating; closing it keeps the ride going)");
         }
-        if (select && !g_wheel.selectDown) g_wheel.pickAt = now;
-        g_wheel.selectDown = select;
         pad = stageb::DkrPad{pad.connected};  // Skate gets nothing while the wheel is open
         return;
     }
@@ -548,8 +546,7 @@ void WheelRide(stageb::DkrPad& pad, double now)
     {
         g_wheel.open = false;
         g_wheel.mask = raw;  // whatever shut the wheel (A or B) stays out of Skate until it's let go
-        if (g_wheel.pickAt >= 0) g_wheel.decideAt = now + 0.15;  // the pick's DrawItemRequest lands first
-        else Log("weapon wheel: closed with nothing picked; still skating");
+        if (g_wheel.decideAt < 0) Log("weapon wheel: closed with nothing picked; still skating");
     }
     g_wheel.mask &= raw;
     pad.buttons &= ~g_wheel.mask;
@@ -558,8 +555,7 @@ void WheelRide(stageb::DkrPad& pad, double now)
         pad = stageb::DkrPad{pad.connected};
         if (now < g_wheel.decideAt) return;
         g_wheel.decideAt = -1;
-        stagec::ItemId pick;
-        stagec::ActiveWeapon(p.handle, pick);
+        const stagec::ItemId pick = g_wheel.pick;
         const bool draw = pick.valid && !pick.board;
         Log("weapon wheel: picked %s: leaving skating%s", !pick.valid ? "nothing" : pick.board ? "the skateboard" : "a weapon",
             draw ? "; it's drawn once the restrictions are off" : "");
@@ -567,6 +563,52 @@ void WheelRide(stageb::DkrPad& pad, double now)
         else stageb::Stop(&LogLine);
         if (draw) g_wheel.draw = pick, g_wheel.drawFrom = now;
         g_wheel.quietUntil = now + 1.5;
+    }
+}
+
+// The HUD script's snapshot (Hud.hpp), once per frame: Skate's scorer while riding, hidden otherwise.
+// deckrunner.ini [hud] enabled=0 keeps it hidden.
+void HudFrame()
+{
+    static int enabled = -1;
+    if (enabled < 0) enabled = GetPrivateProfileIntW(L"hud", L"enabled", 1, data::Ini().c_str()) != 0;
+    hud::SetSkating(stagec::Restricted() && stageb::Active());
+    hud::View v;
+    stageb::DkrHud h;
+    if (enabled && stagec::Restricted() && stageb::Hud(h))
+    {
+        float pos[3], vel[3], heading = 0;
+        uint64_t tick = 0;
+        char state[48] = {};
+        v.visible = true;
+        v.onFoot = stageb::Skater(pos, vel, heading, tick, state) && std::strncmp(state, "Biped", 5) == 0;
+        v.switchStance = h.ridingSwitch != 0;
+        v.trickScore = static_cast<int32_t>(h.sequenceScore + 0.5f);
+        v.lineScore = static_cast<int32_t>(h.lineScore + 0.5f);
+        v.multiplier = h.multiplier, v.lineFraction = h.lineFraction, v.lineSeconds = h.lineSeconds;
+        v.landing = static_cast<int32_t>(h.landing);
+        v.newTricks = static_cast<int32_t>(h.newTricks), v.upgradedTricks = static_cast<int32_t>(h.upgradedTricks);
+        v.closedLines = static_cast<int32_t>(h.closedLines);
+        v.trick = h.trick, v.landingText = h.landingText, v.stance = h.stanceText, v.lineLabel = h.lineLabel;
+        v.trickStance = h.trickStance;
+        v.markerProgress = h.markerProgress;
+        v.markersPlaced = static_cast<int32_t>(h.markersPlaced), v.markerReturns = static_cast<int32_t>(h.markerReturns);
+        v.markerShortHolds = static_cast<int32_t>(h.markerShortHolds);
+        v.markerPlacedText = h.markerPlacedText, v.markerReturnText = h.markerReturnText, v.holdText = h.holdText;
+    }
+    hud::Set(v);
+    // The HUD script (hud.reds, with Codeware) refreshes when what it shows has changed, and animates the rest itself.
+    hud::NotifyScript(&LogLine);
+    // Whether the HUD script runs, once per ride, 3 s in (the script logs its own steps too).
+    static double rideFrom = 0;
+    static bool told = false;
+    if (!v.visible) rideFrom = 0, told = false;
+    else if (rideFrom == 0) rideFrom = NowSeconds();
+    else if (!told && NowSeconds() - rideFrom > 3.0)
+    {
+        told = true;
+        Log("hud: the HUD script read Skate's values %u times so far%s", hud::Reads(),
+            hud::Reads() ? "" : " (not running: Codeware and redscript installed? see r6\\logs\\redscript_rCURRENT.log)");
     }
 }
 
@@ -722,6 +764,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
     if (stagec::Active()) stagec::Frame(GetPlayer().handle, &LogLine);
 
     WheelIdle(NowSeconds());  // #3
+    HudFrame();
     if (stageb::Active())
     {
         stageb::DkrPad pad = ReadPad();
@@ -788,7 +831,13 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_out = std::filesystem::path(local) / L"Deckrunner" / L"probe";
         std::error_code ec;
         std::filesystem::create_directories(g_out, ec);
-        static RED4ext::v1::GameState running{nullptr, &OnRunningUpdate, nullptr};
+        hud::Register(&LogLine);  // DeckrunnerHud: Skate's values for hud.reds, the wheel's pick from wheel.reds
+        // Leaving the running state (the game quitting): every plugin is still loaded, so the HUD script's service
+        // (a Codeware class) is let go of here, not at our unload (Hud.cpp).
+        static RED4ext::v1::GameState running{nullptr, &OnRunningUpdate, [](RED4ext::CGameApplication*) {
+                                                   hud::Release();
+                                                   return true;
+                                               }};
         const bool added = aSdk->gameStates->Add(aHandle, RED4ext::EGameStateType::Running, &running);
         // P2-10 (0.25.7): the head shield's hooks on the engine's two hide setters, pass-through until a shield is set.
         const bool shield = vis::InstallShield(aSdk, aHandle);

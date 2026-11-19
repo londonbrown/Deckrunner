@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use SkateVRuntime::coords;
 
 pub mod retarget;
+pub mod hud;  // the plugin's HUD: Skate's scorer and its words (ABI 13), and its session marker (ABI 14)
 
 // Skate 3's gameplay audio, exactly as SK8V runs it (skatev-runtime's `audio`: Skate's AEMS sound scripts on their own
 // thread, rendered dry at 48 kHz into one mono ring per emitter: deck, body, head). The host pulls the rings and plays
@@ -47,7 +48,7 @@ fn configure(s: &mut Session) {
     s.set_gestures(Some(GESTURES));
 }
 
-pub const ABI_VERSION: u32 = 12;  // 2: renamed from Skaterpunk (spk_* exports became dkr_*); 3: dkr_load_rig and the pose (C3); 4: the board (C3b); 5: the camera (C4); 6: dkr_park and warm restarts (C5); 7: Skate audio; 8: the worker's clock in DkrState (sub_tick, period, steps); 9: dkr_capture (P1-11); 10: dkr_set_bodies (P1-14); 11: dkr_set_difficulty (#6); 12: dkr_preload (#2)
+pub const ABI_VERSION: u32 = 14;  // 2: renamed from Skaterpunk (spk_* exports became dkr_*); 3: dkr_load_rig and the pose (C3); 4: the board (C3b); 5: the camera (C4); 6: dkr_park and warm restarts (C5); 7: Skate audio; 8: the worker's clock in DkrState (sub_tick, period, steps); 9: dkr_capture (P1-11); 10: dkr_set_bodies (P1-14); 11: dkr_set_difficulty (#6); 12: dkr_preload (#2); 13: dkr_get_hud; 14: the session marker in DkrHud
 pub const STATUS_IDLE: u32 = 0;
 pub const STATUS_LOADING: u32 = 1;
 pub const STATUS_ACTIVE: u32 = 2;
@@ -894,6 +895,7 @@ struct Shared {
     wants_collision: Option<Vec3>,
     pose: DkrPose,
     reference: DkrPose,
+    hud: hud::DkrHud,
 }
 
 struct Runtime {
@@ -1055,6 +1057,12 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
     let mut recent: std::collections::VecDeque<Sample> = std::collections::VecDeque::with_capacity(CAPTURE_TICKS + 1);
     let mut capture_due: Option<PendingCapture> = None;
     let (mut bail_captures, mut key_captures, mut captures, mut was_down, mut last_tick) = (0u32, 0u32, 0u32, false, 0u64);
+    // The HUD: Skate's words from the player's own data, loaded once, and the scorer's events counted per ride.
+    let names = match hud::Names::load(&root) {
+        Ok(n) => { log.line(&format!("hud: {} of Skate's strings from {}", n.len(), hud::Names::FILE)); n }
+        Err(e) => { log.line(&format!("hud: Skate's strings unavailable ({e}); trick IDs are shown made readable")); hud::Names::default() }
+    };
+    let mut hud_tracker = hud::Tracker::default();
     for job in receive {
         match job {
             Job::Rig { path } => {
@@ -1112,6 +1120,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                 if let Ok(mut sh) = shared.lock() {
                     sh.state.status = STATUS_IDLE;
                     sh.pose = DkrPose::default();
+                    sh.hud = hud::DkrHud::default();
                     sh.wants_collision = None;
                 }
                 log.line("parked: the session stays loaded for the next start");
@@ -1158,6 +1167,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                         autopilot = auto.then(|| Autopilot::new(heading, spawn));
                         parked = false;
                         (recent, capture_due, was_down) = (Default::default(), None, false);
+                        hud_tracker = hud::Tracker::default();
                         acc = 0.0;
                         audio_state = audio::map::State::default();
                         if let Ok(mut o) = AUDIO_ORIGIN.lock() { *o = origin; }
@@ -1209,6 +1219,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                         (marker_stale, before_teleport) = (false, None);  // a new Skate session has no marker
                         (own_activate, own_teleport) = (Some(s.pose().tick), false);
                         (recent, capture_due, was_down) = (Default::default(), None, false);
+                        hud_tracker = hud::Tracker::default();
                         active_since = std::time::Instant::now();
                         session = Some(s);
                         acc = 0.0;
@@ -1374,6 +1385,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                     let at = coords::from_skate(p.root.w_axis.truncate()) + origin;
                     let v = coords::from_skate(p.velocity);
                     let sc = s.score();
+                    let hud_now = hud_tracker.update(s, p.tick, &names);
                     if !sc.trick_name.is_empty() && sc.trick_name != last_trick { log.line(&format!("tick {}: trick {}", p.tick, sc.trick_name)); last_trick = sc.trick_name.clone(); }
                     if let Some(t) = trace.as_mut() {
                         if p.tick % 6 == 0 { let _ = writeln!(t, "{}", serde_json::json!({"tick": p.tick, "state": p.state, "pos": [at.x, at.y, at.z], "speed": Vec3::new(v.x, v.y, 0.).length()})); }
@@ -1507,6 +1519,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                     }
                     if let Ok(mut sh) = shared.lock() {
                         if let Some(pose) = pose { sh.pose = pose; }
+                        sh.hud = hud_now;
                         let st = &mut sh.state;
                         st.tick = p.tick;
                         (st.sub_tick, st.period, st.steps) = (acc / period, period, steps_handled);
@@ -1601,7 +1614,7 @@ pub unsafe extern "C" fn dkr_create(assets: *const c_char, out_dir: *const c_cha
         std::panic::set_hook(Box::new(move |info| hook_log.line(&format!("PANIC: {info}"))));
         log.line(&format!("=== new session: deckrunner runtime {RUNTIME_VERSION} ({RUNTIME_COMMIT}), ABI {ABI_VERSION}; assets {}{}", root.display(),
                           if pruned > 0 { format!("; {pruned} old captures and traces removed") } else { String::new() }));
-        let shared = Arc::new(Mutex::new(Shared { state: DkrState::default(), wants_collision: None, pose: DkrPose::default(), reference: DkrPose::default() }));
+        let shared = Arc::new(Mutex::new(Shared { state: DkrState::default(), wants_collision: None, pose: DkrPose::default(), reference: DkrPose::default(), hud: hud::DkrHud::default() }));
         let (send, receive) = mpsc::channel();
         let (sh, lg) = (shared.clone(), log.clone());
         let spawned = std::thread::Builder::new().name("deckrunner-skate".into()).spawn(move || {
@@ -1763,6 +1776,20 @@ pub unsafe extern "C" fn dkr_set_difficulty(rt: *mut c_void, index: u32) -> u32 
     guard(0, || {
         let Some(r) = (unsafe { (rt as *const Runtime).as_ref() }) else { return 0 };
         ((index as usize) < DIFFICULTIES.len() && r.send.send(Job::Difficulty(index)).is_ok()) as u32
+    })
+}
+
+/// ABI 13: the HUD's values after the last Skate tick (`hud::DkrHud`, `out.size` set by the caller). Returns 1 once a
+/// tick of the current ride has filled them in, 0 before (and while parked).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dkr_get_hud(rt: *const c_void, out: *mut hud::DkrHud) -> u32 {
+    guard(0, || {
+        let Some(r) = (unsafe { (rt as *const Runtime).as_ref() }) else { return 0 };
+        let Some(o) = (unsafe { out.as_mut() }) else { return 0 };
+        if o.size as usize != std::mem::size_of::<hud::DkrHud>() { return 0; }
+        let Ok(sh) = r.shared.lock() else { return 0 };
+        *o = sh.hud;
+        sh.hud.valid
     })
 }
 
@@ -2060,6 +2087,56 @@ mod tests {
         println!("with gestures {GESTURES:?}: {ticks} ticks, states {states:?}");
     }
 
+    /// The HUD (ABI 13): the autopilot's flips on a flat road, with the plugin's HUD values each tick. Skate's own words
+    /// come from the converted data (private/hud/runtime/trickdisplay.json); prints what the HUD would show.
+    /// DKR_ASSETS=skate-data/assets cargo test --release -- --ignored hud_during_flips --nocapture
+    #[test]
+    #[ignore]
+    fn hud_during_flips() {
+        let root = PathBuf::from(std::env::var("DKR_ASSETS").expect("set DKR_ASSETS"));
+        let names = hud::Names::load(&root).expect("Skate's strings");
+        println!("{} strings", names.len());
+        let mut tris = Vec::new();
+        for iy in -10..200 {
+            for ix in -5..5 {
+                let (x0, y0, x1, y1) = (ix as f32 * 2.0, iy as f32 * 2.0, ix as f32 * 2.0 + 2.0, iy as f32 * 2.0 + 2.0);
+                let p = |x: f32, y: f32| Vec3::new(x, y, 0.0);
+                tris.push(Tri { p: [p(x0, y0), p(x1, y0), p(x1, y1)], physical: true });
+                tris.push(Tri { p: [p(x0, y0), p(x1, y1), p(x0, y1)], physical: true });
+            }
+        }
+        let (spawn, heading) = (Vec3::new(0.0, 0.0, 0.1), 0.0f32);
+        let p = prepare(&tris, Vec3::ZERO, &mut Default::default());
+        let spawn_s = coords::to_skate(spawn).to_array();
+        let mut sess = Session::new_tagged(&root, p.tris, p.tags, p.rails, spawn_s, coords::skate_heading(heading)).expect("session");
+        sess.activate(spawn_s, coords::skate_heading(heading)).expect("activate");
+        let mut ap = Autopilot::new(heading, spawn);
+        let mut tracker = hud::Tracker::default();
+        let text = |b: &[u8]| String::from_utf8_lossy(&b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())]).into_owned();
+        let (mut shown, mut best_line, mut best_seq, mut last) = (Vec::<String>::new(), 0f32, 0f32, hud::DkrHud::default());
+        for _ in 0..1800 {
+            let p = sess.pose();
+            let at = coords::from_skate(p.root.w_axis.truncate());
+            let c = ap.controls(p.tick, at, coords::from_skate(p.velocity), &p.state);
+            if let Some(h) = ap.turn_to.take() { sess.activate(coords::to_skate(at + Vec3::new(0.0, 0.0, 0.05)).to_array(), coords::skate_heading(h)).expect("turn"); }
+            sess.tick(c).expect("tick");
+            let h = tracker.update(&sess, sess.pose().tick, &names);
+            let t = text(&h.trick);
+            if h.new_tricks != last.new_tricks || h.upgraded_tricks != last.upgraded_tricks {
+                shown.push(format!("{t} ({}; trick {:.0}, line {:.0} x{:.1}, {:.1} s left; {})", text(&h.landing_text), h.sequence_score,
+                                   h.line_score, h.multiplier, h.line_seconds, text(&h.stance_text)));
+            }
+            (best_line, best_seq, last) = (best_line.max(h.line_score), best_seq.max(h.sequence_score), h);
+        }
+        for s in &shown { println!("  {s}"); }
+        println!("{} tricks announced, {} upgraded, {} lines closed; best trick score {best_seq:.0}, best line {best_line:.0}",
+                 last.new_tricks, last.upgraded_tricks, last.closed_lines);
+        assert!(names.len() > 500, "Skate's trick names are loaded");
+        assert!(last.new_tricks > 0 && !shown.is_empty(), "the autopilot's flips are announced");
+        assert!(shown.iter().any(|s| s.contains("flip") || s.contains("Ollie")), "a trick shows by its name: {shown:?}");
+        assert!(best_seq > 0.0 || best_line > 0.0, "the flips score");
+    }
+
     /// #2: through the C interface as the plugin uses it: `dkr_preload` loads Skate and stays parked (never active, no
     /// steps), then the first `dkr_start` 30 m away resumes without a reload. Prints how long that start takes.
     /// DKR_ASSETS=skate-data/assets cargo test --release -- --ignored preload_then_start --nocapture
@@ -2247,6 +2324,58 @@ mod tests {
             }
             println!("{}: {}; states {seen:?}", if collect { "collect + advance" } else { "tick" }, marks.join(", "));
         }
+    }
+
+    /// The session marker's HUD (ABI 14, the engine's overlay patch 0050): roll, place a marker with LB + d-pad down,
+    /// tap LB + d-pad up (too short to return), then hold it until the return. Prints the HUD's marker values as they
+    /// change. DKR_ASSETS=skate-data/assets cargo test --release -- --ignored marker_hud --nocapture
+    #[test]
+    #[ignore]
+    fn marker_hud() {
+        use skate_host::bridge::InputFrame;
+        let root = PathBuf::from(std::env::var("DKR_ASSETS").expect("set DKR_ASSETS"));
+        let names = hud::Names::load(&root).expect("Skate's strings");
+        let mut tris = Vec::new();
+        for iy in -10..120 {
+            for ix in -5..5 {
+                let (x0, y0, x1, y1) = (ix as f32 * 2.0, iy as f32 * 2.0, ix as f32 * 2.0 + 2.0, iy as f32 * 2.0 + 2.0);
+                let p = |x: f32, y: f32| Vec3::new(x, y, 0.0);
+                tris.push(Tri { p: [p(x0, y0), p(x1, y0), p(x1, y1)], physical: true });
+                tris.push(Tri { p: [p(x0, y0), p(x1, y1), p(x0, y1)], physical: true });
+            }
+        }
+        let spawn_s = coords::to_skate(Vec3::new(0.0, 0.0, 0.1)).to_array();
+        let p = prepare(&tris, Vec3::ZERO, &mut Default::default());
+        let mut s = Session::new_tagged(&root, p.tris, p.tags, p.rails, spawn_s, coords::skate_heading(0.0)).expect("session");
+        configure(&mut s);
+        s.activate(spawn_s, coords::skate_heading(0.0)).expect("activate");
+        let mut tracker = hud::Tracker::default();
+        let text = |b: &[u8]| String::from_utf8_lossy(&b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())]).into_owned();
+        let (mut last, mut most, mut changes) = (hud::DkrHud::default(), 0f32, Vec::new());
+        for t in 0..700u32 {
+            // Push for 4 s; LB + d-pad down at 2.5 s; a 3-tick tap of LB + d-pad up at 6.7 s; held from 8 s for 1.5 s.
+            let mut buttons = if t < 240 && t % 30 < 4 { A } else { 0 };
+            if (150..160).contains(&t) { buttons |= LB | DPAD_DOWN; }
+            if (400..403).contains(&t) || (480..570).contains(&t) { buttons |= LB | DPAD_UP; }
+            s.collect(InputFrame::from_pad(buttons, [0, 0], [0, 0], [0, 0], t + 1), s.period());
+            s.advance().expect("advance");
+            let h = tracker.update(&s, s.pose().tick, &names);
+            most = most.max(h.marker_progress);
+            let counts = |h: &hud::DkrHud| (h.markers_placed, h.markers_refused, h.marker_returns, h.marker_short_holds);
+            if counts(&h) != counts(&last) || (h.marker_progress > 0.) != (last.marker_progress > 0.) {
+                changes.push(format!("t {t}: placed {}, refused {}, returned {}, short holds {}; hold {:.2}, can return {}",
+                                     h.markers_placed, h.markers_refused, h.marker_returns, h.marker_short_holds, h.marker_progress,
+                                     h.marker_can_return));
+            }
+            last = h;
+        }
+        for c in &changes { println!("  {c}"); }
+        println!("words: {:?}, {:?}, {:?}", text(&last.marker_placed_text), text(&last.marker_return_text), text(&last.hold_text));
+        assert_eq!(last.markers_placed, 1, "LB + d-pad down placed the marker");
+        assert_eq!(last.marker_short_holds, 1, "the tap was too short to return");
+        assert_eq!(last.marker_returns, 1, "the hold returned");
+        assert!(most > 0.9, "the hold ran to its end: {most}");
+        assert!(!text(&last.marker_placed_text).is_empty() && !text(&last.hold_text).is_empty());
     }
 
     /// What SK8V's collision cleanup (world::build_area_reusing) changes in Cyberpunk collision, which Deckrunner

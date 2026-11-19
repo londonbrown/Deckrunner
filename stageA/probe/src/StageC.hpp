@@ -95,10 +95,14 @@ Held InRightHand(const RED4ext::Handle<RED4ext::IScriptable>& player);
 bool ActiveWeapon(const RED4ext::Handle<RED4ext::IScriptable>& player, ItemId& out);
 // Asks the game to draw `item` (a DrawItemRequest, as the wheel sends).
 bool DrawWeapon(const RED4ext::Handle<RED4ext::IScriptable>& player, const ItemId& item, LogFn log);
-// While skating: on foot, the wheel can open (NoRadialMenus and NoCombat off, NoGrenadeOrGadget on); riding, all of the
-// skating restrictions are on. Acts only on a change.
+// While skating: on foot, the wheel can open (NoRadialMenus off); riding, all of the skating restrictions are on. Acts
+// only on a change.
 void SetOnFoot(const RED4ext::Handle<RED4ext::IScriptable>& player, bool onFoot, LogFn log);
 bool OnFootRestrictions();
+// The weapon wheel's pick as wheel.reds handed it over (a gameItemID).
+ItemId ItemFromBytes(const uint8_t (&bytes)[16]);
+// wheel.reds is compiled (redscript is installed): the wheel can be offered on foot, its picks reach the plugin.
+bool WheelScriptPresent();
 // The weapon wheel is open: 1, shut: 0, unknown: -1 (the game's radial_wheel_open fact).
 int RadialWheelOpen();
 } // namespace stagec

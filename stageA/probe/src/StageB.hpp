@@ -97,6 +97,30 @@ struct DkrBody
 };
 static_assert(sizeof(DkrBody) == 88 && offsetof(DkrBody, com) == 20 && offsetof(DkrBody, invMass) == 72);
 
+// The HUD (ABI 13, the runtime's hud::DkrHud): Skate's scorer after the last tick, and (ABI 14) its session marker.
+// Text is UTF-8, zero-terminated.
+struct DkrHud
+{
+    uint32_t size = sizeof(DkrHud);
+    uint32_t valid = 0;
+    uint64_t tick = 0;
+    float sequenceScore = 0;
+    uint32_t sequenceActive = 0;
+    float lineScore = 0, multiplier = 0, lineFraction = 0, lineSeconds = 0;
+    uint32_t landing = 0;  // 0 none yet, 1 clean, 2 sketchy
+    uint32_t ridingSwitch = 0, naturalGoofy = 0;
+    uint32_t newTricks = 0, upgradedTricks = 0, closedLines = 0;
+    char trick[96] = {}, landingText[24] = {}, stanceText[24] = {}, lineLabel[24] = {};
+    char trickStance[24] = {};  // FAKIE or SWITCH beside the ring, as Skate 3's HUD labels the trick; empty for none
+    // ABI 14: Skate's session marker. LB + d-pad up's hold toward the return (0..1; it fires at 1), whether a marker can
+    // be returned to now, and counts since the ride started: placed, refused, returned, holds let go before the return.
+    float markerProgress = 0;
+    uint32_t markerCanReturn = 0;
+    uint32_t markersPlaced = 0, markersRefused = 0, markerReturns = 0, markerShortHolds = 0;
+    char markerPlacedText[48] = {}, markerReturnText[48] = {}, holdText[16] = {};  // Skate 3's words for them
+};
+static_assert(sizeof(DkrHud) == 392 && offsetof(DkrHud, trick) == 64 && offsetof(DkrHud, markerProgress) == 256);
+
 using LogFn = void (*)(const char*);
 // Starts a session at V (game world position, yaw in degrees). Returns false and logs why if it cannot.
 bool Start(const float vPos[3], float vYaw, LogFn log);
@@ -110,6 +134,8 @@ using PlayerPosFn = bool (*)(float out[3]);
 void Frame(float dt, const DkrPad& pad, PlayerPosFn playerPos, LogFn log);
 void Stop(LogFn log);
 bool Active();
+// The HUD's values after the last Skate tick; false before a ride's first tick (or with no runtime).
+bool Hud(DkrHud& out);
 // P1-11 (ABI 9): asks the runtime for a capture of the skater's last 5 s and the collision around them (lab data).
 bool Capture(LogFn log);
 // P0-2: while riding, the engine's error message if Skate's engine stopped (status 3), else nullptr. The next Start

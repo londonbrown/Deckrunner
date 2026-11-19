@@ -13,7 +13,11 @@ folder and run `Deckrunner Setup.cmd`. Setup's README has the details.
   [ArchiveXL](https://github.com/psiberx/cp2077-archive-xl/releases)): V gets a **Skateboard**. Equip it in a weapon slot
   once (Inventory, Weapons), then pick it in the weapon wheel to start skating. On foot, hold **Y** (Triangle) for the
   wheel: pick the Skateboard to stop, or a weapon to stop and draw it. Without them, Ctrl+Shift+F10 does it all.
-- Removing it by hand: delete `red4ext\plugins\deckrunner\`, `r6\tweaks\deckrunner\` and
+- HUD (optional: needs [Codeware](https://github.com/psiberx/cp2077-codeware/releases)): Skate's trick, score, line,
+  multiplier, landing and stance, laid out as Skate 3's scoring HUD (a ring for the line's timer) in Cyberpunk's own
+  style, bottom right.
+  `[hud] enabled=0` in `deckrunner.ini` hides it.
+- Removing it by hand: delete `red4ext\plugins\deckrunner\`, `r6\tweaks\deckrunner\`, `r6\scripts\deckrunner\` and
   `archive\pc\mod\deckrunner_items.archive` (and its `.xl`).
 - Bug reports: https://github.com/londonbrown/Deckrunner/issues
 

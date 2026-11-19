@@ -19,6 +19,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <map>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -3320,18 +3321,16 @@ void Frame(const Handle<IScriptable>& player, LogFn log)
 // The item is Items.Deckrunner_Skateboard, a copy of the knuckles defined by r6\tweaks\deckrunner\skateboard.yaml
 // (TweakXL; its name comes from ArchiveXL). Without them there is no item, and the key works as before. The game's rules,
 // from its scripts (tools\redmod\scripts): the wheel opens unless V has the NoRadialMenus (or NoWeaponWheel) tag
-// (QuickSlotsTransitions), and applies a pick through a DrawItemRequest, which it refuses outright under NoCombat
-// (RadialWheelController.DrawItem). EquipmentSystemPlayerData.DrawItem then makes the pick the Weapon area's active item
-// before it checks NoWeapons, which only stops the draw itself. So on foot NoCombat and NoRadialMenus come off and the
-// wheel works, NoWeapons stays (a tap of Y draws nothing: UpperBodyTransition's QueueActionBlocked), and a pick shows up
-// as the active item. NoCombat also carries NoGrenadeOrGadget, which goes on by itself on foot; its NoQuickHacks needs
-// the scanner, which NoScanning keeps off. Riding, all of the skating restrictions are on, as before.
+// (QuickSlotsTransitions), and refuses a pick under NoCombat (RadialWheelController.DrawItem). So on foot only
+// NoRadialMenus comes off, and wheel.reds takes the pick from the wheel's DrawItem before that refusal and hands it to
+// the plugin (DeckrunnerHud.WheelPick). NoCombat stays on, which keeps V's hands empty (UpperBodyTransition's
+// ForceEmptyHands) and a tap of Y silent: 0.32.0 lifted NoCombat too, and every tap then showed "Action Blocked"
+// (NoWeapons). Riding, all of the skating restrictions are on, as before.
 namespace
 {
 constexpr const char* kBoardItem = "Items.Deckrunner_Skateboard";
 constexpr const char* kBoardTag = "Deckrunner";  // in the item's tags (skateboard.yaml)
-constexpr const char* kOnFootOff[] = {"GameplayRestriction.NoRadialMenus", "GameplayRestriction.NoCombat"};
-constexpr const char* kOnFootOn = "GameplayRestriction.NoGrenadeOrGadget";
+constexpr const char* kOnFootOff = "GameplayRestriction.NoRadialMenus";
 uintptr_t g_boardChecked = 0;  // the V object the skateboard was last given or found on
 
 bool EnumValue(const char* enumName, const char* valueName, int64_t& out)
@@ -3474,24 +3473,27 @@ void SetOnFoot(const Handle<IScriptable>& player, bool onFoot, LogFn log)
 {
     if (g.mode != Mode::Restricted || !player.instance || onFoot == g_wheelOnFoot) return;
     g_wheelOnFoot = onFoot;
-    std::string done;
-    for (const char* id : kOnFootOff)
-    {
-        const bool ok = onFoot ? RemoveEffect(player, id) : ApplyEffect(player, id);
-        done += std::string(" ") + (std::strchr(id, '.') + 1) + (ok ? "" : " (not accepted)");
-    }
-    if (onFoot)
-    {
-        const bool ok = ApplyEffect(player, kOnFootOn);
-        if (ok && std::find(g_ours.ids.begin(), g_ours.ids.end(), kOnFootOn) == g_ours.ids.end()) g_ours.ids.push_back(kOnFootOn);
-        Logf(log, "weapon wheel: on foot: a held Y opens the wheel (removed%s; added NoGrenadeOrGadget%s)", done.c_str(), ok ? "" : " (not accepted)");
-    }
-    else
-    {
-        const bool ok = RemoveEffect(player, kOnFootOn);
-        Logf(log, "weapon wheel: riding: the wheel is off again (applied%s; removed NoGrenadeOrGadget%s)", done.c_str(), ok ? "" : " (not accepted)");
-    }
+    const bool ok = onFoot ? RemoveEffect(player, kOnFootOff) : ApplyEffect(player, kOnFootOff);
+    Logf(log, onFoot ? "weapon wheel: on foot: a held Y opens the wheel (NoRadialMenus removed%s)"
+                     : "weapon wheel: riding: the wheel is off again (NoRadialMenus applied%s)", ok ? "" : ", not accepted");
     g_ours.appliedAt = NowMs();  // RestrictionsLost waits for them to land, as after entry
+}
+
+ItemId ItemFromBytes(const uint8_t (&bytes)[16])
+{
+    ItemId out;
+    std::memcpy(out.bytes, bytes, sizeof bytes);
+    const TweakDBID rec = RecordOf(out.bytes);
+    out.board = rec == TweakDBID(kBoardItem);
+    out.valid = rec.value != 0;
+    return out;
+}
+
+bool WheelScriptPresent()
+{
+    static bool present = false;  // kept once found (the scripts load once per game run), looked up again until then
+    if (!present) present = Cls("DeckrunnerWheel") != nullptr;
+    return present;
 }
 
 bool OnFootRestrictions() { return g.mode == Mode::Restricted && g_wheelOnFoot; }
