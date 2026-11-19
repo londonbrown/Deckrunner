@@ -99,4 +99,6 @@ bool DrawWeapon(const RED4ext::Handle<RED4ext::IScriptable>& player, const ItemI
 // skating restrictions are on. Acts only on a change.
 void SetOnFoot(const RED4ext::Handle<RED4ext::IScriptable>& player, bool onFoot, LogFn log);
 bool OnFootRestrictions();
+// The weapon wheel is open: 1, shut: 0, unknown: -1 (the game's radial_wheel_open fact).
+int RadialWheelOpen();
 } // namespace stagec

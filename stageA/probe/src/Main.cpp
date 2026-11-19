@@ -436,19 +436,21 @@ void CycleStep()
 
 // ----- #3: the skateboard in the weapon wheel (0.32.0) -----
 // Picking the skateboard in the weapon wheel draws it, and a drawn skateboard starts skating (the restrictions then
-// empty V's hands). While skating on foot the wheel opens on a held Y (Wheel.hpp keeps that press from Skate); whatever
-// the wheel picked stops skating, and a weapon other than the skateboard is drawn once the restrictions are gone.
-// With a keyboard the wheel (Alt) shows a pick the same way. Ctrl+Shift+F10 works as before throughout.
+// empty V's hands). While skating on foot the wheel opens on a held Y (Wheel.hpp keeps that press from Skate) and stays
+// open until a pick or a close, as the game's wheel does: A (or the left mouse button) applies the highlighted slot and
+// shuts it, B (or the right mouse button) shuts it with nothing picked. A pick leaves skating, and a weapon other than
+// the skateboard is drawn once the restrictions are gone; a close keeps the ride going. Skate gets no input while the
+// wheel is open. Ctrl+Shift+F10 works as before throughout.
 wheel::YSplit g_ysplit;
 struct WheelState
 {
     double footSince = -1;        // when the skater's on-foot state last changed (the restrictions follow it after a moment)
     bool foot = false;
-    stagec::ItemId active;        // the Weapon area's active item, polled while the wheel can open
-    bool haveActive = false;
-    double pollAt = 0;
+    bool open = false;            // the game's weapon wheel is open (its radial_wheel_open fact)
+    bool selectDown = false;      // A or the left mouse button, as last seen while it was open
+    double pickAt = -1;           // when A or the left mouse button went down while it was open
+    uint16_t mask = 0;            // buttons still held from the wheel, kept from Skate until they're let go
     double decideAt = -1;         // a pick to act on: leave skating then
-    const char* how = "";
     stagec::ItemId draw;          // a weapon to draw once the skating restrictions are gone
     double drawFrom = -1;
     double quietUntil = 0;        // no start from a drawn skateboard right after skating ends
@@ -459,7 +461,7 @@ void BeginSkating(const PlayerInfo& p)
 {
     // C5: from normal play, straight into skating; with third person already on, only the skater starts.
     g_ysplit = wheel::YSplit{};
-    g_wheel.decideAt = -1, g_wheel.footSince = -1, g_wheel.foot = false, g_wheel.haveActive = false;
+    g_wheel.decideAt = -1, g_wheel.footSince = -1, g_wheel.foot = false, g_wheel.open = false, g_wheel.mask = 0;
     if (!stagec::Restricted()) g_skateToggle = stagec::EnterSkating(p.handle, &LogLine);
     if (stagec::Restricted() && !StartSkater(p) && g_skateToggle) LeaveSkating(p, "the skater could not start");
 }
@@ -497,11 +499,19 @@ void WheelIdle(double now)
     }
 }
 
-// Skating: the restrictions follow the skater's on-foot state, Y is split on foot, and a pick in the wheel leaves.
-uint16_t WheelRide(uint16_t buttons, double now)
+bool GameFocused()
+{
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    return pid == GetCurrentProcessId();
+}
+
+// Skating: the restrictions follow the skater's on-foot state, Y is split on foot, the wheel's input stays out of Skate,
+// and a pick in the wheel leaves.
+void WheelRide(stageb::DkrPad& pad, double now)
 {
     const PlayerInfo p = GetPlayer();
-    if (!p.ok || !stagec::Restricted()) return buttons;
+    if (!p.ok || !stagec::Restricted()) return;
     float pos[3], vel[3], heading = 0;
     uint64_t tick = 0;
     char state[48] = {};
@@ -511,39 +521,53 @@ uint16_t WheelRide(uint16_t buttons, double now)
         if (foot != g_wheel.foot) g_wheel.foot = foot, g_wheel.footSince = now;
         if (g_wheel.footSince >= 0 && now - g_wheel.footSince > 0.15)
         {
-            const bool was = stagec::OnFootRestrictions();
             stagec::SetOnFoot(p.handle, foot, &LogLine);
-            if (!was && stagec::OnFootRestrictions()) g_wheel.haveActive = stagec::ActiveWeapon(p.handle, g_wheel.active);
             g_wheel.footSince = -1;
         }
     }
+    const uint16_t raw = pad.buttons;
     wheel::Event ev;
-    const uint16_t out = g_ysplit.Filter(buttons, now, stagec::OnFootRestrictions(), ev);
+    pad.buttons = g_ysplit.Filter(pad.buttons, now, stagec::OnFootRestrictions(), ev);
     if (ev == wheel::Event::HoldStart) Log("weapon wheel: Y held on foot: the game's weapon wheel (Skate doesn't get this press)");
-    if (ev == wheel::Event::HoldEnd && g_wheel.decideAt < 0) g_wheel.decideAt = now + 0.3, g_wheel.how = "Y held on foot";
-    // A pick without Y (the keyboard's Alt wheel) shows up as a new active item.
-    if (stagec::OnFootRestrictions() && g_wheel.haveActive && g_wheel.decideAt < 0 && !g_ysplit.Holding() && now >= g_wheel.pollAt)
+    constexpr uint16_t kA = 0x1000;
+    const int open = stagec::OnFootRestrictions() || g_wheel.open ? stagec::RadialWheelOpen() : 0;
+    const bool select = (raw & kA) || (GameFocused() && (GetAsyncKeyState(VK_LBUTTON) & 0x8000));
+    if (open == 1)
     {
-        g_wheel.pollAt = now + 0.2;
-        stagec::ItemId a;
-        if (stagec::ActiveWeapon(p.handle, a) && std::memcmp(a.bytes, g_wheel.active.bytes, sizeof a.bytes) != 0)
-            g_wheel.decideAt = now + 0.1, g_wheel.how = "a new pick in the weapon wheel";
+        if (!g_wheel.open)
+        {
+            g_wheel.open = true, g_wheel.pickAt = -1, g_wheel.selectDown = select;
+            Log("weapon wheel: open (a pick leaves skating; closing it keeps the ride going)");
+        }
+        if (select && !g_wheel.selectDown) g_wheel.pickAt = now;
+        g_wheel.selectDown = select;
+        pad = stageb::DkrPad{pad.connected};  // Skate gets nothing while the wheel is open
+        return;
     }
-    if (g_wheel.decideAt > 0 && now >= g_wheel.decideAt)
+    if (g_wheel.open)
     {
+        g_wheel.open = false;
+        g_wheel.mask = raw;  // whatever shut the wheel (A or B) stays out of Skate until it's let go
+        if (g_wheel.pickAt >= 0) g_wheel.decideAt = now + 0.15;  // the pick's DrawItemRequest lands first
+        else Log("weapon wheel: closed with nothing picked; still skating");
+    }
+    g_wheel.mask &= raw;
+    pad.buttons &= ~g_wheel.mask;
+    if (g_wheel.decideAt > 0)
+    {
+        pad = stageb::DkrPad{pad.connected};
+        if (now < g_wheel.decideAt) return;
         g_wheel.decideAt = -1;
         stagec::ItemId pick;
         stagec::ActiveWeapon(p.handle, pick);
         const bool draw = pick.valid && !pick.board;
-        Log("weapon wheel: %s, picked %s: leaving skating%s", g_wheel.how, !pick.valid ? "nothing" : pick.board ? "the skateboard" : "a weapon",
+        Log("weapon wheel: picked %s: leaving skating%s", !pick.valid ? "nothing" : pick.board ? "the skateboard" : "a weapon",
             draw ? "; it's drawn once the restrictions are off" : "");
         if (g_skateToggle) LeaveSkating(p, "weapon wheel");
         else stageb::Stop(&LogLine);
         if (draw) g_wheel.draw = pick, g_wheel.drawFrom = now;
         g_wheel.quietUntil = now + 1.5;
-        return out & ~wheel::kY;
     }
-    return out;
 }
 
 bool OnRunningUpdate(RED4ext::CGameApplication*)
@@ -701,7 +725,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
     if (stageb::Active())
     {
         stageb::DkrPad pad = ReadPad();
-        pad.buttons = WheelRide(pad.buttons, NowSeconds());  // #3: Y on foot, and a pick in the weapon wheel
+        WheelRide(pad, NowSeconds());  // #3: Y on foot, the weapon wheel's input, and a pick in it
         if (stageb::Active())  // a pick in the wheel may have just ended the ride
             stageb::Frame(stagec::GameClock(static_cast<float>(frameDt), &LogLine), pad,
                           [](float out[3]) {

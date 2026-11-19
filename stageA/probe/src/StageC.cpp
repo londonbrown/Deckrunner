@@ -3495,4 +3495,16 @@ void SetOnFoot(const Handle<IScriptable>& player, bool onFoot, LogFn log)
 }
 
 bool OnFootRestrictions() { return g.mode == Mode::Restricted && g_wheelOnFoot; }
+
+int RadialWheelOpen()
+{
+    // RadialWheelController sets the quest fact radial_wheel_open to 1 when the wheel opens and to 0 when it shuts.
+    static CClass* qc = Cls("QuestsSystem");
+    static CBaseFunction* get = Func(qc, "GetFact");
+    IScriptable* self = nullptr;
+    if (!SelfFor(qc, get, self) || !ParamIs(get, 0, "CName")) return -1;
+    CName fact("radial_wheel_open");
+    int32_t v = 0;
+    return Call(self, get, &v, {&fact}) ? v : -1;
+}
 } // namespace stagec
