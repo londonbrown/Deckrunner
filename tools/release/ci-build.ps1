@@ -5,7 +5,7 @@
 #   pwsh <temp folder>/tools/release/ci-build.ps1 -Version 0.0.0-local -Work <another temp folder>
 #
 # Needs Visual Studio 2022 (C++), CMake, rustup, the .NET 10 SDK and Python 3.11+. Output:
-# build/release/Deckrunner-<Version>.zip (the plugin) and Deckrunner-Setup-<Version>.zip in the checkout.
+# build/release/Deckrunner-<Version>.zip (the plugin) and Deckrunner-Setup-<n>.zip (n from release/setup/VERSION).
 param(
     [Parameter(Mandatory)][string]$Version,
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'deckrunner-ci')

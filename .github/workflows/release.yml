@@ -1,6 +1,7 @@
 # Builds the Deckrunner release from source with tools/release/ci-build.ps1 (run that locally to check a build first)
-# and, for a version tag (v1.2.3), publishes it as a GitHub release with release/notes/<version>.md as its notes. Run
-# the workflow by hand (Actions > Release > Run workflow) to build without publishing: the zips are kept as an artifact.
+# and, for a version tag (v1.2.3), drafts a GitHub release with release/notes/<version>.md as its notes (published by
+# hand). Run the workflow by hand (Actions > Release > Run workflow) to build without a release: the zips are kept as an
+# artifact.
 #
 # Everything comes from this repository and its submodules: deps/deckrunner-engine (Deckrunner's fork of SK8V, whose
 # pinned upstreams are Deckrunner's forks too) and deps/RED4ext.SDK. WolvenKit's console release (for compiling wkprobe)
@@ -83,20 +84,28 @@ jobs:
           key: wolvenkit-10.0.0-beta.1-292185c2f51d1ca85b95e1a7ca63a2d1bc8a3fc5ee387275e9a42ec78103155e
 
       - name: Build
-        run: ./tools/release/ci-build.ps1 -Version $env:DKR_VERSION -Work "$env:RUNNER_TEMP/work"
+        run: |
+          ./tools/release/ci-build.ps1 -Version $env:DKR_VERSION -Work "$env:RUNNER_TEMP/work"
+          "DKR_SETUP=$((Get-Content release/setup/VERSION)[0])" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - uses: actions/upload-artifact@v4
         with:
           name: Deckrunner-${{ env.DKR_VERSION }}
           path: |
             build/release/Deckrunner-${{ env.DKR_VERSION }}.zip
-            build/release/Deckrunner-Setup-${{ env.DKR_VERSION }}.zip
+            build/release/Deckrunner-Setup-${{ env.DKR_SETUP }}.zip
 
-      - name: Publish
+      # A draft: the release is published by hand after a look. The setup has its own number (release/setup/VERSION)
+      # and is attached only while no published release has it yet, so a plugin update ships the plugin alone.
+      - name: Draft the release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $setup = "Deckrunner-Setup-$env:DKR_SETUP.zip"
+          $published = gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft == false) | .assets[].name'
+          $files = @("build/release/Deckrunner-$env:DKR_VERSION.zip")
+          if ($published -contains $setup) { "$setup is already released; attaching the plugin only" } else { $files += "build/release/$setup" }
           $pre = if ($env:DKR_VERSION.Contains('-')) { @('--prerelease') } else { @() }
-          gh release create $env:GITHUB_REF_NAME "build/release/Deckrunner-$env:DKR_VERSION.zip" "build/release/Deckrunner-Setup-$env:DKR_VERSION.zip" `
+          gh release create $env:GITHUB_REF_NAME @files --draft `
             --title "Deckrunner $env:DKR_VERSION" --notes-file "release/notes/$env:DKR_VERSION.md" @pre

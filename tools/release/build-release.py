@@ -84,6 +84,8 @@ def main():
     ap.add_argument('--skip-wkprobe', action='store_true', help='reuse the last publish (for repackaging)')
     ap.add_argument('--plugin-dll', type=Path, default=PLUGIN_DLL, help='the built deckrunner_probe.dll')
     ap.add_argument('--runtime-dll', type=Path, default=RUNTIME_DLL, help='the built deckrunner_runtime.dll')
+    ap.add_argument('--update-setup-version', action='store_true',
+                    help='the setup changed: bump release/setup/VERSION to the next number and record its hash')
     a = ap.parse_args()
     if sha256(GPL3) != GPL3_SHA:
         raise SystemExit(f'{GPL3} is not the canonical GPL-3.0 text')
@@ -91,8 +93,9 @@ def main():
     # Two files (issue #1): the plugin, which mod managers install and Nexus Mods passes on its own, and the setup,
     # whose scripts Nexus holds for a moderator but which rarely changes.
     rel = REPO / 'release'
+    setup_number, setup_hash = read_setup_version()
     plugin_out = REPO / 'build/release' / f'Deckrunner-{a.version}'
-    out = REPO / 'build/release' / f'Deckrunner-Setup-{a.version}'
+    out = REPO / 'build/release' / f'Deckrunner-Setup-{setup_number}'
     for d in (plugin_out, out):
         shutil.rmtree(d, ignore_errors=True)
     plugin = plugin_out / 'red4ext/plugins/deckrunner'
@@ -144,8 +147,44 @@ def main():
                    check=True)
     if any(f.suffix.lower() not in PLUGIN_SUFFIXES for f in plugin_out.rglob('*') if f.is_file()):
         raise SystemExit(f'the plugin file may only hold {sorted(PLUGIN_SUFFIXES)}: no scripts, so Nexus Mods passes it')
+    # The setup has its own version (release/setup/VERSION), so a plugin release doesn't republish an unchanged setup:
+    # Nexus Mods holds every setup upload for a moderator. Its hash covers everything in the setup zip but wkprobe's
+    # build output, which differs from build to build; a changed setup must get a new number.
+    now = setup_content_hash(out)
+    if now != setup_hash:
+        if not a.update_setup_version:
+            raise SystemExit(f'the setup changed since Deckrunner Setup {setup_number} (release/setup/VERSION); rerun with '
+                             '--update-setup-version to make it the next number, and commit release/setup/VERSION')
+        if setup_hash:  # a recorded setup changed: the next number; the first record keeps its number
+            setup_number += 1
+            moved = out.with_name(f'Deckrunner-Setup-{setup_number}')
+            shutil.rmtree(moved, ignore_errors=True)
+            out = out.rename(moved)
+        SETUP_VERSION.write_text(f'{setup_number}\n{now}\n', encoding='ascii', newline='\n')
+        print(f'release/setup/VERSION is now Deckrunner Setup {setup_number}')
     finish(plugin_out, top=None)        # its root is the game folder, for Vortex and MO2
     finish(out, top=out.name)
+
+
+SETUP_VERSION = REPO / 'release/setup/VERSION'
+
+
+def read_setup_version():
+    """Deckrunner Setup's own number and the hash of its contents, from release/setup/VERSION."""
+    lines = SETUP_VERSION.read_text(encoding='ascii').split()
+    return int(lines[0]), (lines[1] if len(lines) > 1 else '')
+
+
+def setup_content_hash(out):
+    """SHA-256 over the setup folder's files (path and text with LF line endings), leaving out wkprobe's build
+    output and the checksum list."""
+    h = hashlib.sha256()
+    for f in sorted(out.rglob('*')):
+        rel_path = f.relative_to(out).as_posix()
+        if not f.is_file() or rel_path == 'SHA256SUMS.txt' or rel_path in {f'setup/wkprobe/{n}' for n in WKPROBE_FILES}:
+            continue
+        h.update(rel_path.encode() + b'\0' + f.read_bytes().replace(b'\r\n', b'\n') + b'\0')
+    return h.hexdigest()
 
 
 def finish(out, top):

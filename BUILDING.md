@@ -50,8 +50,13 @@ At run time it reads `DKR_WOLVENKIT` (the WolvenKit folder) and `DKR_GAME` (the 
 ## A release
 
 Push a tag `v<version>` with `release/notes/<version>.md` committed: `.github/workflows/release.yml` builds everything
-above on GitHub and publishes the two zips as a GitHub release: `Deckrunner-<version>.zip` (the plugin, for mod
-managers) and `Deckrunner-Setup-<version>.zip` (the one-time setup). Run the workflow by hand to build without publishing.
+above on GitHub and **drafts** a GitHub release (publish it by hand after a look) with `Deckrunner-<version>.zip` (the
+plugin, for mod managers) and, when it is new, `Deckrunner-Setup-<n>.zip`. Run the workflow by hand to build without a
+release.
+
+The setup has its own number, `n` in `release/setup/VERSION`, with a hash of its contents: a plugin release doesn't
+republish an unchanged setup (Nexus Mods holds every setup upload for review). When the setup changes, the build stops
+until you run `build-release.py` once with `--update-setup-version` and commit the new `release/setup/VERSION`.
 
 Locally:
 
