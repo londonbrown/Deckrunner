@@ -78,4 +78,27 @@ bool GamePaused();
 bool Listener(float pos[3], float fwd[3], float right[3]);
 // C3: the rig JSON for V's body (female or male player skeleton; deckrunner.ini [stagec] rig_female / rig_male).
 std::string RigFor(const RED4ext::Handle<RED4ext::IScriptable>& player, LogFn log);
+// #3: the skateboard in the weapon wheel (the weapon wheel section of StageC.cpp). Items.Deckrunner_Skateboard comes from
+// TweakXL and ArchiveXL; without them BoardItemDefined is false and the rest is never needed.
+enum class Held { Nothing, Board, Other };
+struct ItemId
+{
+    alignas(8) uint8_t bytes[16] = {};  // a gameItemID
+    bool valid = false, board = false;
+};
+bool BoardItemDefined();
+// Gives V the skateboard if she has none (once per player object, so once per loaded save).
+void EnsureBoardItem(const RED4ext::Handle<RED4ext::IScriptable>& player, LogFn log);
+// What V holds in her right hand.
+Held InRightHand(const RED4ext::Handle<RED4ext::IScriptable>& player);
+// The Weapon area's active item: what the weapon wheel picked last, even when a restriction stopped the draw.
+bool ActiveWeapon(const RED4ext::Handle<RED4ext::IScriptable>& player, ItemId& out);
+// Asks the game to draw `item` (a DrawItemRequest, as the wheel sends).
+bool DrawWeapon(const RED4ext::Handle<RED4ext::IScriptable>& player, const ItemId& item, LogFn log);
+// While skating: on foot, the wheel can open (NoRadialMenus and NoCombat off, NoGrenadeOrGadget on); riding, all of the
+// skating restrictions are on. Acts only on a change.
+void SetOnFoot(const RED4ext::Handle<RED4ext::IScriptable>& player, bool onFoot, LogFn log);
+bool OnFootRestrictions();
+// The weapon wheel is open: 1, shut: 0, unknown: -1 (the game's radial_wheel_open fact).
+int RadialWheelOpen();
 } // namespace stagec

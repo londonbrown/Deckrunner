@@ -33,7 +33,11 @@ GPL3 = Path(__file__).with_name('licenses') / 'GPL-3.0.txt'  # the canonical GNU
 GPL3_SHA = '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986'
 WKPROBE_FILES = ['wkprobe.dll', 'wkprobe.deps.json', 'wkprobe.runtimeconfig.json']
 # What the plugin file (Deckrunner's main file on Nexus) may hold: the two DLLs, the ini and text.
-PLUGIN_SUFFIXES = {'.dll', '.ini', '.md', '.txt', ''}
+PLUGIN_SUFFIXES = {'.dll', '.ini', '.md', '.txt', '', '.yaml', '.xl', '.archive'}
+# #3: the skateboard in the weapon wheel, for players with TweakXL and ArchiveXL: its record (r6\tweaks) and its name
+# and description, an archive built here by wkprobe from Deckrunner's own JSON (the one archive a release may hold).
+ITEMS_ARCHIVE = 'archive/pc/mod/deckrunner_items.archive'
+ITEMS_SOURCES = REPO / 'release/plugin/archive/deckrunner_items'
 # SK8V 1.1.10's setup scripts (Apache-2.0), shipped as Deckrunner's own copies; their two programs come from Deckrunner's
 # GitHub release (build-tools.py). The donor tools they run, as SK8V's own release lists them (traced there with an
 # open() audit hook), at the pinned donor commit.
@@ -104,6 +108,8 @@ def main():
     # Never deckrunner.ini itself: an update would overwrite the player's settings. The plugin makes it from this.
     copy(rel / 'deckrunner.ini', plugin / 'deckrunner.default.ini')
     copy(rel / 'plugin/README.md', plugin / 'README.md')
+    copy(rel / 'plugin/r6/tweaks/deckrunner/skateboard.yaml', plugin_out / 'r6/tweaks/deckrunner/skateboard.yaml')
+    copy(rel / 'plugin/archive/deckrunner_items.archive.xl', plugin_out / (ITEMS_ARCHIVE + '.xl'))
     for f in ('LICENSE', 'NOTICE'):
         copy(rel / f, plugin / f)
     for f in ('Deckrunner Setup.cmd', 'Deckrunner Uninstall.cmd', 'README.md', 'LICENSE', 'NOTICE'):
@@ -143,6 +149,7 @@ def main():
         shutil.rmtree(LOCAL / 'wkprobe-release', ignore_errors=True)
         shutil.copytree(setup / 'wkprobe', LOCAL / 'wkprobe-release')
 
+    build_items_archive(setup / 'wkprobe' / 'wkprobe.dll', plugin_out / ITEMS_ARCHIVE)
     subprocess.run([sys.executable, '-I', str(Path(__file__).with_name('notices.py')), '--out', str(plugin / 'THIRD-PARTY-NOTICES.txt')],
                    check=True)
     if any(f.suffix.lower() not in PLUGIN_SUFFIXES for f in plugin_out.rglob('*') if f.is_file()):
@@ -162,7 +169,7 @@ def main():
             out = out.rename(moved)
         SETUP_VERSION.write_text(f'{setup_number}\n{now}\n', encoding='ascii', newline='\n')
         print(f'release/setup/VERSION is now Deckrunner Setup {setup_number}')
-    finish(plugin_out, top=None)        # its root is the game folder, for Vortex and MO2
+    finish(plugin_out, top=None, allow=[plugin_out / ITEMS_ARCHIVE])  # its root is the game folder, for Vortex and MO2
     finish(out, top=out.name)
 
 
@@ -187,9 +194,29 @@ def setup_content_hash(out):
     return h.hexdigest()
 
 
-def finish(out, top):
+def build_items_archive(wkprobe, archive):
+    """The weapon wheel's name archive: each <name>.json.json under ITEMS_SOURCES (WolvenKit JSON) becomes the resource
+    <name>.json at the same depot path, and wkprobe packs them (and reads the archive back: every file there, decoding to
+    what went in). No game folder is needed: without the game's Oodle the archive is written uncompressed."""
+    if not os.environ.get('WOLVENKIT_DIR'):
+        raise SystemExit('set WOLVENKIT_DIR to a WolvenKit 10.0.0-beta.1 folder (wkprobe builds the weapon wheel archive)')
+    work = LOCAL / 'items-archive'
+    shutil.rmtree(work, ignore_errors=True)
+    (work / 'nogame').mkdir(parents=True)
+    env = {**os.environ, 'DKR_WOLVENKIT': os.environ['WOLVENKIT_DIR'], 'DKR_GAME': str(work / 'nogame')}
+    sources = sorted(ITEMS_SOURCES.rglob('*.json.json'))
+    if not sources:
+        raise SystemExit(f'no sources in {ITEMS_SOURCES}')
+    for src in sources:
+        out = work / 'depot' / src.relative_to(ITEMS_SOURCES).with_suffix('')
+        subprocess.run(['dotnet', str(wkprobe), 'cr2w', str(src), str(out)], env=env, check=True)
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['dotnet', str(wkprobe), 'pack', str(work / 'depot'), str(archive)], env=env, check=True)
+
+
+def finish(out, top, allow=()):
     """Scans a release folder, writes its SHA256SUMS.txt and zips it, under `top` or at the zip's root."""
-    problems = scan.scan([out])
+    problems = scan.scan([out], allow)
     if problems:
         raise SystemExit('the release holds what it must not:\n  ' + '\n  '.join(problems))
     sums = [f'{sha256(f)}  {f.relative_to(out).as_posix()}' for f in sorted(out.rglob('*')) if f.is_file()]

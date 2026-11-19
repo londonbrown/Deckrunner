@@ -37,8 +37,11 @@ def found(needle, data):
     return re.search(rb'(?<![A-Za-z0-9])' + re.escape(needle) + rb'(?![A-Za-z0-9])', data) is not None
 
 
-def scan(paths):
+def scan(paths, allow=()):
+    """`allow`: files built by the release from Deckrunner's own sources that have a game data format's suffix (the
+    weapon wheel's name archive); they're still checked for this machine's paths."""
     bad, ns = [], needles()
+    allowed = {Path(a).resolve() for a in allow}
     files = []
     for p in map(Path, paths):
         files += [f for f in p.rglob('*') if f.is_file()] if p.is_dir() else [p]
@@ -49,7 +52,7 @@ def scan(paths):
         if f.suffix.lower() in SCRIPT_HOSTS:
             bad.append(f'{f}: a script-host file ({f.suffix}); antivirus sandboxes flag script hosts run from Temp')
             continue
-        if f.suffix.lower() in RETAIL:
+        if f.suffix.lower() in RETAIL and f.resolve() not in allowed:
             bad.append(f'{f}: a game data format ({f.suffix})')
             continue
         data = f.read_bytes()

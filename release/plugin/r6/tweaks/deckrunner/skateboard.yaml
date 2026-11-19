@@ -1,0 +1,14 @@
+# Deckrunner's skateboard in the weapon wheel (issue #3). Needs TweakXL, and ArchiveXL for the name and description
+# (archive\pc\mod\deckrunner_items.archive.xl); without them the plugin still works and Ctrl+Shift+F10 starts skating.
+#
+# A copy of the knuckles: a weapon-slot item with no prop of its own, so picking it in the wheel shows no weapon in V's
+# hands before skating takes over. The plugin gives V one, starts skating when it's drawn, and stops skating when it's
+# picked again while V is on foot. Quest: it can't be dropped, sold or disassembled.
+Items.Deckrunner_Skateboard:
+  $base: Items.Preset_Knuckles_Default
+  displayName: Deckrunner-Skateboard-Name
+  localizedDescription: Deckrunner-Skateboard-Description
+  quality: Quality.Common
+  tags:
+    - !append Quest
+    - !append Deckrunner

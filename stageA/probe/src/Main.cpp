@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -36,6 +37,7 @@
 #include "StageB.hpp"
 #include "StageC.hpp"
 #include "Visibility.hpp"
+#include "Wheel.hpp"
 
 namespace
 {
@@ -432,6 +434,142 @@ void CycleStep()
     }
 }
 
+// ----- #3: the skateboard in the weapon wheel (0.32.0) -----
+// Picking the skateboard in the weapon wheel draws it, and a drawn skateboard starts skating (the restrictions then
+// empty V's hands). While skating on foot the wheel opens on a held Y (Wheel.hpp keeps that press from Skate) and stays
+// open until a pick or a close, as the game's wheel does: A (or the left mouse button) applies the highlighted slot and
+// shuts it, B (or the right mouse button) shuts it with nothing picked. A pick leaves skating, and a weapon other than
+// the skateboard is drawn once the restrictions are gone; a close keeps the ride going. Skate gets no input while the
+// wheel is open. Ctrl+Shift+F10 works as before throughout.
+wheel::YSplit g_ysplit;
+struct WheelState
+{
+    double footSince = -1;        // when the skater's on-foot state last changed (the restrictions follow it after a moment)
+    bool foot = false;
+    bool open = false;            // the game's weapon wheel is open (its radial_wheel_open fact)
+    bool selectDown = false;      // A or the left mouse button, as last seen while it was open
+    double pickAt = -1;           // when A or the left mouse button went down while it was open
+    uint16_t mask = 0;            // buttons still held from the wheel, kept from Skate until they're let go
+    double decideAt = -1;         // a pick to act on: leave skating then
+    stagec::ItemId draw;          // a weapon to draw once the skating restrictions are gone
+    double drawFrom = -1;
+    double quietUntil = 0;        // no start from a drawn skateboard right after skating ends
+} g_wheel;
+int g_boardDefined = -1;          // Items.Deckrunner_Skateboard in TweakDB (-1: not looked up yet)
+
+void BeginSkating(const PlayerInfo& p)
+{
+    // C5: from normal play, straight into skating; with third person already on, only the skater starts.
+    g_ysplit = wheel::YSplit{};
+    g_wheel.decideAt = -1, g_wheel.footSince = -1, g_wheel.foot = false, g_wheel.open = false, g_wheel.mask = 0;
+    if (!stagec::Restricted()) g_skateToggle = stagec::EnterSkating(p.handle, &LogLine);
+    if (stagec::Restricted() && !StartSkater(p) && g_skateToggle) LeaveSkating(p, "the skater could not start");
+}
+
+bool BoardDefined()
+{
+    if (g_boardDefined < 0) g_boardDefined = stagec::BoardItemDefined() ? 1 : 0;
+    return g_boardDefined == 1;
+}
+
+// Not skating: the skateboard given once the world is in, a drawn skateboard starting a ride, and a weapon picked in the
+// wheel while skating drawn once the restrictions are gone.
+void WheelIdle(double now)
+{
+    if (!g_autoDone) return;  // the world isn't loaded yet
+    if (g_frames % 300 == 0)
+        if (const PlayerInfo p = GetPlayer(); p.ok) stagec::EnsureBoardItem(p.handle, &LogLine);
+    if (g_wheel.drawFrom > 0 && !stagec::Restricted())
+    {
+        const PlayerInfo p = GetPlayer();
+        if (!stagec::Active() || now - g_wheel.drawFrom > 3.0)  // the restrictions are gone (or it's been long enough)
+        {
+            if (p.ok) stagec::DrawWeapon(p.handle, g_wheel.draw, &LogLine);
+            g_wheel.drawFrom = -1;
+        }
+        return;
+    }
+    if (g_frames % 6 != 0 || now < g_wheel.quietUntil || stagec::Restricted() || stageb::Active() || g_cycle.on || !BoardDefined()) return;
+    const PlayerInfo p = GetPlayer();
+    if (p.ok && stagec::InRightHand(p.handle) == stagec::Held::Board)
+    {
+        Log("weapon wheel: the skateboard was drawn; skating");
+        g_wheel.quietUntil = now + 3.0;  // if the start fails with the skateboard still in hand, it isn't retried at once
+        BeginSkating(p);
+    }
+}
+
+bool GameFocused()
+{
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    return pid == GetCurrentProcessId();
+}
+
+// Skating: the restrictions follow the skater's on-foot state, Y is split on foot, the wheel's input stays out of Skate,
+// and a pick in the wheel leaves.
+void WheelRide(stageb::DkrPad& pad, double now)
+{
+    const PlayerInfo p = GetPlayer();
+    if (!p.ok || !stagec::Restricted()) return;
+    float pos[3], vel[3], heading = 0;
+    uint64_t tick = 0;
+    char state[48] = {};
+    if (stageb::Skater(pos, vel, heading, tick, state) && tick > 0)
+    {
+        const bool foot = std::strncmp(state, "Biped", 5) == 0;  // BipedGround and the rest of Skate's on-foot states
+        if (foot != g_wheel.foot) g_wheel.foot = foot, g_wheel.footSince = now;
+        if (g_wheel.footSince >= 0 && now - g_wheel.footSince > 0.15)
+        {
+            stagec::SetOnFoot(p.handle, foot, &LogLine);
+            g_wheel.footSince = -1;
+        }
+    }
+    const uint16_t raw = pad.buttons;
+    wheel::Event ev;
+    pad.buttons = g_ysplit.Filter(pad.buttons, now, stagec::OnFootRestrictions(), ev);
+    if (ev == wheel::Event::HoldStart) Log("weapon wheel: Y held on foot: the game's weapon wheel (Skate doesn't get this press)");
+    constexpr uint16_t kA = 0x1000;
+    const int open = stagec::OnFootRestrictions() || g_wheel.open ? stagec::RadialWheelOpen() : 0;
+    const bool select = (raw & kA) || (GameFocused() && (GetAsyncKeyState(VK_LBUTTON) & 0x8000));
+    if (open == 1)
+    {
+        if (!g_wheel.open)
+        {
+            g_wheel.open = true, g_wheel.pickAt = -1, g_wheel.selectDown = select;
+            Log("weapon wheel: open (a pick leaves skating; closing it keeps the ride going)");
+        }
+        if (select && !g_wheel.selectDown) g_wheel.pickAt = now;
+        g_wheel.selectDown = select;
+        pad = stageb::DkrPad{pad.connected};  // Skate gets nothing while the wheel is open
+        return;
+    }
+    if (g_wheel.open)
+    {
+        g_wheel.open = false;
+        g_wheel.mask = raw;  // whatever shut the wheel (A or B) stays out of Skate until it's let go
+        if (g_wheel.pickAt >= 0) g_wheel.decideAt = now + 0.15;  // the pick's DrawItemRequest lands first
+        else Log("weapon wheel: closed with nothing picked; still skating");
+    }
+    g_wheel.mask &= raw;
+    pad.buttons &= ~g_wheel.mask;
+    if (g_wheel.decideAt > 0)
+    {
+        pad = stageb::DkrPad{pad.connected};
+        if (now < g_wheel.decideAt) return;
+        g_wheel.decideAt = -1;
+        stagec::ItemId pick;
+        stagec::ActiveWeapon(p.handle, pick);
+        const bool draw = pick.valid && !pick.board;
+        Log("weapon wheel: picked %s: leaving skating%s", !pick.valid ? "nothing" : pick.board ? "the skateboard" : "a weapon",
+            draw ? "; it's drawn once the restrictions are off" : "");
+        if (g_skateToggle) LeaveSkating(p, "weapon wheel");
+        else stageb::Stop(&LogLine);
+        if (draw) g_wheel.draw = pick, g_wheel.drawFrom = now;
+        g_wheel.quietUntil = now + 1.5;
+    }
+}
+
 bool OnRunningUpdate(RED4ext::CGameApplication*)
 {
     ++g_frames;
@@ -500,12 +638,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
             if (g_skateToggle && p.ok) LeaveSkating(p, g_keySkate.text.c_str());
         }
         else if (!p.ok) Log("stage B: player not available");
-        else
-        {
-            // C5: from normal play, straight into skating; with third person already on, only the skater starts.
-            if (!stagec::Restricted()) g_skateToggle = stagec::EnterSkating(p.handle, &LogLine);
-            if (stagec::Restricted() && !StartSkater(p) && g_skateToggle) LeaveSkating(p, "the skater could not start");
-        }
+        else BeginSkating(p);
     }
     f10Down = f10, cycleDown = cycleKey;
     CycleStep();
@@ -588,14 +721,20 @@ bool OnRunningUpdate(RED4ext::CGameApplication*)
     f7Down = f7, f6Down = f6, f11Down = f11, f2Down = f2;
     if (stagec::Active()) stagec::Frame(GetPlayer().handle, &LogLine);
 
+    WheelIdle(NowSeconds());  // #3
     if (stageb::Active())
-        stageb::Frame(stagec::GameClock(static_cast<float>(frameDt), &LogLine), ReadPad(),
-                      [](float out[3]) {
-                          const PlayerInfo p = GetPlayer();
-                          if (p.ok) out[0] = p.pos.X, out[1] = p.pos.Y, out[2] = p.pos.Z;
-                          return p.ok;
-                      },
-                      &LogLine);
+    {
+        stageb::DkrPad pad = ReadPad();
+        WheelRide(pad, NowSeconds());  // #3: Y on foot, the weapon wheel's input, and a pick in it
+        if (stageb::Active())  // a pick in the wheel may have just ended the ride
+            stageb::Frame(stagec::GameClock(static_cast<float>(frameDt), &LogLine), pad,
+                          [](float out[3]) {
+                              const PlayerInfo p = GetPlayer();
+                              if (p.ok) out[0] = p.pos.X, out[1] = p.pos.Y, out[2] = p.pos.Z;
+                              return p.ok;
+                          },
+                          &LogLine);
+    }
     // Stage C2: third person + restrictions on (Ctrl+Shift+F7 twice) and a Stage B session riding (Ctrl+Shift+F10):
     // the skater carries V.
     {
@@ -667,9 +806,9 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_keySkate = LoadKey(L"skate", "Ctrl+Shift+F10");
         g_keyCapture = LoadKey(L"capture", "Ctrl+Shift+F12");
 #ifdef DECKRUNNER_LAB_KEYS
-        Log("Deckrunner 0.31.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.32.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #else
-        Log("Deckrunner 0.31.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.32.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #endif
             g_keySkate.text.c_str(), g_keyCapture.text.c_str(), aSdk->runtime->major, aSdk->runtime->minor, aSdk->runtime->patch, added ? "added" : "FAILED",
             shield ? "attached" : "NOT attached (the engine's hide setters were not found or their code is not 2.5's)", g_out.c_str());
