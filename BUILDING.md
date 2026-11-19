@@ -50,7 +50,8 @@ At run time it reads `DKR_WOLVENKIT` (the WolvenKit folder) and `DKR_GAME` (the 
 ## A release
 
 Push a tag `v<version>` with `release/notes/<version>.md` committed: `.github/workflows/release.yml` builds everything
-above on GitHub and publishes the zip as a GitHub release. Run the workflow by hand to build without publishing.
+above on GitHub and publishes the two zips as a GitHub release: `Deckrunner-<version>.zip` (the plugin, for mod
+managers) and `Deckrunner-Setup-<version>.zip` (the one-time setup). Run the workflow by hand to build without publishing.
 
 Locally:
 
