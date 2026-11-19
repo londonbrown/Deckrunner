@@ -1,5 +1,6 @@
-"""Builds the Deckrunner release folder and zip from an allowlist: the plugin, the runtime, the setup and wkprobe (GPL-3.0,
-with its source). No programs: Nexus Mods quarantines uploads that contain executables (0.1.0 was), so the tools setup
+"""Builds the Deckrunner release from an allowlist, as two zips (issue #1): Deckrunner-<version>.zip, the plugin and the
+runtime with the game folder as its root, for mod managers (no scripts, so Nexus Mods passes it on its own); and
+Deckrunner-Setup-<version>.zip, the setup and wkprobe (GPL-3.0, with its source). No programs: Nexus Mods quarantines uploads that contain executables (0.1.0 was), so the tools setup
 runs (Deckrunner's setup tools, WolvenKit, .NET, Python) are downloaded by the setup from their official releases,
 pinned and hash-checked, and wkprobe ships as a .NET assembly. No PowerShell either: VirusTotal's sandbox flagged 0.1.1's
 launcher (powershell -ExecutionPolicy Bypass -File from the Temp folder it unpacks into) under four Sigma rules, so the
@@ -31,6 +32,8 @@ WKPROBE = REPO / 'tools/wkprobe'
 GPL3 = Path(__file__).with_name('licenses') / 'GPL-3.0.txt'  # the canonical GNU GPL v3 text (gnu.org gpl-3.0.txt)
 GPL3_SHA = '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986'
 WKPROBE_FILES = ['wkprobe.dll', 'wkprobe.deps.json', 'wkprobe.runtimeconfig.json']
+# What the plugin file (Deckrunner's main file on Nexus) may hold: the two DLLs, the ini and text.
+PLUGIN_SUFFIXES = {'.dll', '.ini', '.md', '.txt', ''}
 # SK8V 1.1.10's setup scripts (Apache-2.0), shipped as Deckrunner's own copies; their two programs come from Deckrunner's
 # GitHub release (build-tools.py). The donor tools they run, as SK8V's own release lists them (traced there with an
 # open() audit hook), at the pinned donor commit.
@@ -85,17 +88,23 @@ def main():
     if sha256(GPL3) != GPL3_SHA:
         raise SystemExit(f'{GPL3} is not the canonical GPL-3.0 text')
 
-    name = f'Deckrunner-{a.version}'
-    out = REPO / 'build/release' / name
-    shutil.rmtree(out, ignore_errors=True)
+    # Two files (issue #1): the plugin, which mod managers install and Nexus Mods passes on its own, and the setup,
+    # whose scripts Nexus holds for a moderator but which rarely changes.
     rel = REPO / 'release'
-    for f in ('Deckrunner Setup.cmd', 'Deckrunner Uninstall.cmd', 'README.md', 'LICENSE', 'NOTICE'):
-        copy(rel / f, out / f)
-    copy(REPO / 'media/deckrunner-logo.png', out / 'deckrunner-logo.png')
-    plugin = out / 'payload/red4ext/plugins/deckrunner'
+    plugin_out = REPO / 'build/release' / f'Deckrunner-{a.version}'
+    out = REPO / 'build/release' / f'Deckrunner-Setup-{a.version}'
+    for d in (plugin_out, out):
+        shutil.rmtree(d, ignore_errors=True)
+    plugin = plugin_out / 'red4ext/plugins/deckrunner'
     copy(a.plugin_dll, plugin / 'deckrunner.dll')
     copy(a.runtime_dll, plugin / 'runtime/deckrunner_runtime.dll')
     copy(rel / 'deckrunner.ini', plugin / 'deckrunner.ini')
+    copy(rel / 'plugin/README.md', plugin / 'README.md')
+    for f in ('LICENSE', 'NOTICE'):
+        copy(rel / f, plugin / f)
+    for f in ('Deckrunner Setup.cmd', 'Deckrunner Uninstall.cmd', 'README.md', 'LICENSE', 'NOTICE'):
+        copy(rel / f, out / f)
+    copy(REPO / 'media/deckrunner-logo.png', out / 'deckrunner-logo.png')
     setup = out / 'setup'
     for f in ('prepare.py', 'setup.py'):
         copy(rel / 'setup' / f, setup / f)
@@ -130,22 +139,30 @@ def main():
         shutil.rmtree(LOCAL / 'wkprobe-release', ignore_errors=True)
         shutil.copytree(setup / 'wkprobe', LOCAL / 'wkprobe-release')
 
-    subprocess.run([sys.executable, '-I', str(Path(__file__).with_name('notices.py')), '--out', str(out / 'THIRD-PARTY-NOTICES.txt')],
+    subprocess.run([sys.executable, '-I', str(Path(__file__).with_name('notices.py')), '--out', str(plugin / 'THIRD-PARTY-NOTICES.txt')],
                    check=True)
+    if any(f.suffix.lower() not in PLUGIN_SUFFIXES for f in plugin_out.rglob('*') if f.is_file()):
+        raise SystemExit(f'the plugin file may only hold {sorted(PLUGIN_SUFFIXES)}: no scripts, so Nexus Mods passes it')
+    finish(plugin_out, top=None)        # its root is the game folder, for Vortex and MO2
+    finish(out, top=out.name)
+
+
+def finish(out, top):
+    """Scans a release folder, writes its SHA256SUMS.txt and zips it, under `top` or at the zip's root."""
     problems = scan.scan([out])
     if problems:
         raise SystemExit('the release holds what it must not:\n  ' + '\n  '.join(problems))
     sums = [f'{sha256(f)}  {f.relative_to(out).as_posix()}' for f in sorted(out.rglob('*')) if f.is_file()]
-    (out / 'SHA256SUMS.txt').write_text('\n'.join(sums) + '\n', encoding='utf-8')
-    z = out.parent / f'{name}.zip'
+    if top:
+        (out / 'SHA256SUMS.txt').write_text('\n'.join(sums) + '\n', encoding='utf-8')
+    z = out.parent / f'{out.name}.zip'
     z.unlink(missing_ok=True)
     with zipfile.ZipFile(z, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for f in sorted(out.rglob('*')):
             if f.is_file():
-                zf.write(f, f'{name}/{f.relative_to(out).as_posix()}')
+                zf.write(f, f'{top}/{f.relative_to(out).as_posix()}' if top else f.relative_to(out).as_posix())
     size = sum(f.stat().st_size for f in out.rglob('*') if f.is_file())
     print(f'{z} ({z.stat().st_size / 1e6:.1f} MB zipped, {size / 1e6:.1f} MB unpacked, {len(sums)} files; scan clean)')
-
 
 if __name__ == '__main__':
     main()

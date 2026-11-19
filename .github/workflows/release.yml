@@ -1,6 +1,6 @@
 # Builds the Deckrunner release from source with tools/release/ci-build.ps1 (run that locally to check a build first)
 # and, for a version tag (v1.2.3), publishes it as a GitHub release with release/notes/<version>.md as its notes. Run
-# the workflow by hand (Actions > Release > Run workflow) to build without publishing: the zip is kept as an artifact.
+# the workflow by hand (Actions > Release > Run workflow) to build without publishing: the zips are kept as an artifact.
 #
 # Everything comes from this repository and its submodules: deps/deckrunner-engine (Deckrunner's fork of SK8V, whose
 # pinned upstreams are Deckrunner's forks too) and deps/RED4ext.SDK. WolvenKit's console release (for compiling wkprobe)
@@ -88,7 +88,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Deckrunner-${{ env.DKR_VERSION }}
-          path: build/release/Deckrunner-${{ env.DKR_VERSION }}.zip
+          path: |
+            build/release/Deckrunner-${{ env.DKR_VERSION }}.zip
+            build/release/Deckrunner-Setup-${{ env.DKR_VERSION }}.zip
 
       - name: Publish
         if: github.ref_type == 'tag'
@@ -96,5 +98,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $pre = if ($env:DKR_VERSION.Contains('-')) { @('--prerelease') } else { @() }
-          gh release create $env:GITHUB_REF_NAME "build/release/Deckrunner-$env:DKR_VERSION.zip" `
+          gh release create $env:GITHUB_REF_NAME "build/release/Deckrunner-$env:DKR_VERSION.zip" "build/release/Deckrunner-Setup-$env:DKR_VERSION.zip" `
             --title "Deckrunner $env:DKR_VERSION" --notes-file "release/notes/$env:DKR_VERSION.md" @pre

@@ -22,8 +22,8 @@ Stages:
   rigs        V's two player rigs, from the game's archives (wkprobe json)
   graph       V's animation graph with Deckrunner's pose input (wkprobe patch-skate, pack)
   board       Skate's skateboard as a game mesh (board_glb.py, wkprobe board-build, pack)
-  install     the plugin, its data and the two archives into the game folder
-  verify      every file the plugin checks for
+  install     the two archives into the game folder (the data is built in place; the plugin is Deckrunner's main file)
+  verify      every file the plugin checks for, and a note if the plugin itself isn't there yet
 """
 import argparse
 import hashlib
@@ -42,8 +42,11 @@ HERE = Path(__file__).resolve().parent            # <release>/setup
 RELEASE = HERE.parent                             # <release>
 WKPROBE = HERE / 'wkprobe' / 'wkprobe.dll'        # framework-dependent: run by a .NET 10 runtime
 BOARD_GLB = HERE / 'board_glb.py'
-PAYLOAD = RELEASE / 'payload'                     # red4ext/plugins/deckrunner/... as it goes into the game folder
 PLUGIN_REL = Path('red4ext/plugins/deckrunner')
+PLUGIN_MISSING = '''
+   Note: the Deckrunner plugin is not in this game folder yet. Install Deckrunner's main file too (with Vortex or MO2,
+   or extract it into the game folder). With MO2 it only appears while the game runs through MO2, so this is expected
+   there.'''
 ARCHIVE_REL = Path('archive/pc/mod')
 ARCHIVES = ['deckrunner_c3.archive', 'deckrunner_board.archive']
 SK8V_DIR = HERE / 'sk8v'                          # SK8V 1.1.10's setup scripts and donor snapshot, laid out as its repo
@@ -159,8 +162,7 @@ class Prepare:
             ('rigs', [WKPROBE], [game_id], self.stage_rigs),
             ('graph', [WKPROBE], [game_id], self.stage_graph),
             ('board', [WKPROBE, BOARD_GLB], [game_id, disc_id], self.stage_board),
-            ('install', [PAYLOAD / PLUGIN_REL / 'deckrunner.dll', PAYLOAD / PLUGIN_REL / 'runtime/deckrunner_runtime.dll'], [game_id],
-             self.stage_install),
+            ('install', [], [game_id], self.stage_install),
             ('verify', [], [], self.stage_verify),
         ]
 
@@ -281,20 +283,10 @@ class Prepare:
         self.wkprobe('pack', w / 'archive', w / ARCHIVES[1])
 
     def stage_install(self):
-        """The plugin from the release, the two archives built here; the data is already in place. Every file written
+        """The two archives built here; the data is already in place. Every file written
         outside data\\ is listed in installed.json, for --uninstall."""
+        # The plugin itself comes from Deckrunner's main file (Vortex, MO2 or extracted by hand), never from setup.
         installed = []
-        src_plugin = PAYLOAD / PLUGIN_REL
-        for f in sorted(src_plugin.rglob('*')):
-            if not f.is_file():
-                continue
-            rel = f.relative_to(src_plugin)
-            dst = self.plugin / rel
-            if rel.name == 'deckrunner.ini' and dst.exists():
-                continue  # keep the player's settings
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(f, dst)
-            installed.append(str(PLUGIN_REL / rel))
         mod = self.cp / ARCHIVE_REL
         mod.mkdir(parents=True, exist_ok=True)
         for name, w in zip(ARCHIVES, ('graph', 'board')):
@@ -305,11 +297,12 @@ class Prepare:
 
     def stage_verify(self):
         need = [self.assets / 'private/game.json', self.assets / 'private/skater.glb', self.audio / 'manifest.json',
-                self.plugin / 'deckrunner.dll', self.plugin / 'runtime/deckrunner_runtime.dll',
                 *(self.rigs / r for r in RIGS), *(self.cp / ARCHIVE_REL / n for n in ARCHIVES)]
         missing = [str(p) for p in need if not p.is_file()]
         if missing:
             raise SystemExit('setup finished, but these are missing:\n  ' + '\n  '.join(missing))
+        if not (self.plugin / 'deckrunner.dll').is_file():
+            print(PLUGIN_MISSING, flush=True)
 
     # ----- the run -----
     def run(self):
@@ -350,7 +343,8 @@ class Prepare:
         shutil.rmtree(self.cp / m['data'], ignore_errors=True)
         manifest.unlink()
         shutil.rmtree(self.receipts, ignore_errors=True)
-        print(f'Deckrunner removed from {self.cp} (your deckrunner.ini is kept)')
+        print(f'Removed what setup built from {self.cp}: the data and the two archives. Remove the plugin itself (the '
+              'Deckrunner main file) with your mod manager, or delete red4ext\\plugins\\deckrunner by hand.')
 
 
 def main():
