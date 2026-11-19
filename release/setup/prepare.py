@@ -339,6 +339,8 @@ class Prepare:
             raise SystemExit(f'no Deckrunner installation in {self.cp} (no {PLUGIN_REL}\\installed.json)')
         m = json.loads(manifest.read_text(encoding='utf-8'))
         for rel in m['files']:
+            if Path(rel).name.lower() == 'deckrunner.ini':
+                continue  # the player's settings (0.1.x manifests list it)
             (self.cp / rel).unlink(missing_ok=True)
         shutil.rmtree(self.cp / m['data'], ignore_errors=True)
         manifest.unlink()

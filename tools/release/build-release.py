@@ -98,7 +98,8 @@ def main():
     plugin = plugin_out / 'red4ext/plugins/deckrunner'
     copy(a.plugin_dll, plugin / 'deckrunner.dll')
     copy(a.runtime_dll, plugin / 'runtime/deckrunner_runtime.dll')
-    copy(rel / 'deckrunner.ini', plugin / 'deckrunner.ini')
+    # Never deckrunner.ini itself: an update would overwrite the player's settings. The plugin makes it from this.
+    copy(rel / 'deckrunner.ini', plugin / 'deckrunner.default.ini')
     copy(rel / 'plugin/README.md', plugin / 'README.md')
     for f in ('LICENSE', 'NOTICE'):
         copy(rel / f, plugin / f)

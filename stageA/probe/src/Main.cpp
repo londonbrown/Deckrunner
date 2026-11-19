@@ -638,12 +638,21 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         const bool shield = vis::InstallShield(aSdk, aHandle);
         // stagec::InstallCameraHook(aSdk, aHandle, &LogLine);  // not attached in 0.9.5: with the first-person body the
         // camera is steady without it, and it runs on a worker thread anyway (C1 run 4). Kept for Stage C4.
+        // 0.29.0: the plugin file ships deckrunner.default.ini, never deckrunner.ini, so an update (by hand, Vortex or
+        // MO2) can't overwrite the player's settings; the first start makes deckrunner.ini from it.
+        {
+            const auto ini = data::Ini(), defaults = data::PluginDir() / L"deckrunner.default.ini";
+            std::error_code e;
+            if (!std::filesystem::exists(ini, e) && std::filesystem::exists(defaults, e))
+                Log(CopyFileW(defaults.c_str(), ini.c_str(), TRUE) ? "deckrunner.ini created from deckrunner.default.ini"
+                                                                   : "deckrunner.ini could not be created from deckrunner.default.ini; using the defaults");
+        }
         g_keySkate = LoadKey(L"skate", "Ctrl+Shift+F10");
         g_keyCapture = LoadKey(L"capture", "Ctrl+Shift+F12");
 #ifdef DECKRUNNER_LAB_KEYS
-        Log("Deckrunner 0.28.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.29.0 (lab keys) loaded (skate on/off: %s; capture the last 5 s of a ride: %s; lab: probe read-only Ctrl+Shift+F8, cycle test Ctrl+Shift+Alt+F10, sparse teleports or every frame while riding Ctrl+Shift+F11, Stage C third person Ctrl+Shift+F7, C3 reference-pose test Ctrl+Shift+F11, V's head off/on while skating Ctrl+Shift+F2, emergency exit Ctrl+Shift+F6). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #else
-        Log("Deckrunner 0.28.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
+        Log("Deckrunner 0.29.0 loaded (skate on/off: %s; capture the last 5 s of a ride: %s; keys in deckrunner.ini [keys]). Game product version %u.%u.%u. Running-state hook %s. Head shield hooks %s. Output: %ls",
 #endif
             g_keySkate.text.c_str(), g_keyCapture.text.c_str(), aSdk->runtime->major, aSdk->runtime->minor, aSdk->runtime->patch, added ? "added" : "FAILED",
             shield ? "attached" : "NOT attached (the engine's hide setters were not found or their code is not 2.5's)", g_out.c_str());
