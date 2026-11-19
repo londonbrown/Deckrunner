@@ -100,6 +100,9 @@ static_assert(sizeof(DkrBody) == 88 && offsetof(DkrBody, com) == 20 && offsetof(
 using LogFn = void (*)(const char*);
 // Starts a session at V (game world position, yaw in degrees). Returns false and logs why if it cannot.
 bool Start(const float vPos[3], float vYaw, LogFn log);
+// #2: loads Skate in the background at V and keeps it parked, so the first Start resumes at once. Once per game; false
+// (logged) if the runtime already exists or can't be made (the first Start then loads as before).
+bool Preload(const float vPos[3], float vYaw, LogFn log);
 // Reads V's current game world position; false if V is unavailable.
 using PlayerPosFn = bool (*)(float out[3]);
 // Per frame from the main thread: forwards the frame time, feeds collision requests, logs every 2 s. On each

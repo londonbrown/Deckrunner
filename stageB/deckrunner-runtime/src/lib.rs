@@ -33,6 +33,13 @@ static AUDIO_ORIGIN: Mutex<Vec3> = Mutex::new(Vec3::ZERO);
 pub const GESTURES: [u32; 4] = [23, 7, 24, 22];
 
 /// Deckrunner's settings on a freshly loaded session, before its first activate.
+/// #2: puts the skater at a start's spawn. Players start on foot with the board in hand (SK8V's lifecycle entry, Skate's
+/// own off-board checkpoint return); Y gets on the board. The autopilot (lab tests) starts on the board, rolling.
+fn enter(s: &mut Session, spawn_s: [f32; 3], heading: f32, autopilot: bool) -> Result<(), String> {
+    let heading = coords::skate_heading(heading);
+    if autopilot { s.activate(spawn_s, heading) } else { s.activate_offboard(spawn_s, heading) }.map(|_| ())
+}
+
 /// #6: Skate 3's physics_mode names, by index (`dkr_set_difficulty`).
 const DIFFICULTIES: [&str; 4] = ["easy", "normal", "hardcore", "motorized"];
 
@@ -40,7 +47,7 @@ fn configure(s: &mut Session) {
     s.set_gestures(Some(GESTURES));
 }
 
-pub const ABI_VERSION: u32 = 11;  // 2: renamed from Skaterpunk (spk_* exports became dkr_*); 3: dkr_load_rig and the pose (C3); 4: the board (C3b); 5: the camera (C4); 6: dkr_park and warm restarts (C5); 7: Skate audio; 8: the worker's clock in DkrState (sub_tick, period, steps); 9: dkr_capture (P1-11); 10: dkr_set_bodies (P1-14); 11: dkr_set_difficulty (#6)
+pub const ABI_VERSION: u32 = 12;  // 2: renamed from Skaterpunk (spk_* exports became dkr_*); 3: dkr_load_rig and the pose (C3); 4: the board (C3b); 5: the camera (C4); 6: dkr_park and warm restarts (C5); 7: Skate audio; 8: the worker's clock in DkrState (sub_tick, period, steps); 9: dkr_capture (P1-11); 10: dkr_set_bodies (P1-14); 11: dkr_set_difficulty (#6); 12: dkr_preload (#2)
 pub const STATUS_IDLE: u32 = 0;
 pub const STATUS_LOADING: u32 = 1;
 pub const STATUS_ACTIVE: u32 = 2;
@@ -400,7 +407,7 @@ const SAFE_TICKS: u32 = 30;
 /// marker return), so a return soon after a bail, or a respawn more than a second after the wipeout, was taken for the
 /// other.
 /// The runtime's own version, in its log (0.24.1: P1-16, a marker return centred on the kept set's real middle).
-const RUNTIME_VERSION: &str = "0.25.0";
+const RUNTIME_VERSION: &str = "0.26.0";
 const LB: u16 = 0x0100;
 const DPAD_UP: u16 = 0x0001;
 const DPAD_DOWN: u16 = 0x0002;
@@ -838,7 +845,8 @@ fn prepare_rails_only(world: &[Tri], origin: Vec3, sort: bool) -> (Vec<[[f32; 3]
 }
 
 enum Job {
-    Start { tris: Vec<Tri>, spawn: Vec3, heading: f32, autopilot: bool },
+    /// `preload` (#2): load Skate and stay parked, so the first start is a resume.
+    Start { tris: Vec<Tri>, spawn: Vec3, heading: f32, autopilot: bool, preload: bool },
     Step { dt: f32, pad: DkrPad, posted: std::time::Instant },
     Collision { tris: Vec<Tri>, center: Vec3 },
     Rig { path: String },
@@ -1107,7 +1115,8 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
             }
             // C5: a start with a session already loaded resumes it: collision built around the new spawn and the skater
             // put there with Skate's own activate. No reload (about 8 s), just the collision build (tens of ms).
-            Job::Start { tris, spawn, heading, autopilot: auto } if session.is_some() => {
+            Job::Start { preload: true, .. } if session.is_some() => log.line("preload: Skate is already loaded"),
+            Job::Start { tris, spawn, heading, autopilot: auto, preload: _ } if session.is_some() => {
                 let t0 = std::time::Instant::now();
                 if let Ok(mut sh) = shared.lock() {
                     sh.state.status = STATUS_LOADING;
@@ -1129,7 +1138,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                 let resumed = builder.ok_or_else(|| "no collision builder".to_string())
                     .and_then(|b| b.build_tagged(prep.tris, prep.tags, prep.rails))
                     .and_then(|prepared| s.install_collision(prepared))
-                    .and_then(|_| s.activate(spawn_s, coords::skate_heading(heading)).map(|_| ()));
+                    .and_then(|_| enter(s, spawn_s, heading, auto));
                 match resumed {
                     Ok(()) => {
                         current = Arc::new(tris);
@@ -1169,7 +1178,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                     Err(e) => { log.line(&format!("resume failed: {e}")); set_error(&shared, &e); }
                 }
             }
-            Job::Start { tris, spawn, heading, autopilot: auto } => {
+            Job::Start { tris, spawn, heading, autopilot: auto, preload } => {
                 // A fresh load, also after an engine error dropped the last session: the old error must not show while
                 // this one loads (the first in-game ride logged "loading Skate" beside the gesture error).
                 if let Ok(mut s) = shared.lock() { s.state.status = STATUS_LOADING; s.state.error = [0; 160]; s.pose.valid = 0; }
@@ -1185,7 +1194,7 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                     .and_then(|mut s| {
                         configure(&mut s);
                         s.set_difficulty(difficulty);
-                        s.activate(spawn_s, coords::skate_heading(heading))?;
+                        enter(&mut s, spawn_s, heading, auto)?;
                         Ok(s)
                     })
                 {
@@ -1203,6 +1212,14 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                         autopilot = auto.then(|| Autopilot::new(heading, spawn));
                         audio_state = audio::map::State::default();
                         if let Ok(mut o) = AUDIO_ORIGIN.lock() { *o = origin; }
+                        if preload {
+                            // #2: parked as after a ride (the skater stands at the spawn, off the board); no steps until a start.
+                            parked = true;
+                            autopilot = None;
+                            if let Ok(mut s) = shared.lock() { s.state.status = STATUS_IDLE; s.pose = DkrPose::default(); s.wants_collision = None; }
+                            log.line(&format!("preloaded in {} ms around ({:.0}, {:.0}, {:.0}); parked until the first start", t0.elapsed().as_millis(), spawn.x, spawn.y, spawn.z));
+                            continue;
+                        }
                         log.line(&format!("session ready in {} ms; spawn ({:.2}, {:.2}, {:.2}) heading {heading:.1}; autopilot {auto}", t0.elapsed().as_millis(), spawn.x, spawn.y, spawn.z));
                         if let Ok(mut s) = shared.lock() {
                             s.state.status = STATUS_ACTIVE;
@@ -1211,6 +1228,11 @@ fn worker(root: PathBuf, out_dir: PathBuf, receive: mpsc::Receiver<Job>, shared:
                             s.state.collision_center = spawn.to_array();
                             s.state.heading = heading;
                         }
+                    }
+                    // A failed preload leaves no session: the first start loads again, and shows its own error if any.
+                    Err(e) if preload => {
+                        log.line(&format!("preload failed (the first start loads again): {e}"));
+                        if let Ok(mut s) = shared.lock() { s.state.status = STATUS_IDLE; s.state.error = [0; 160]; }
                     }
                     Err(e) => { log.line(&format!("session failed: {e}")); set_error(&shared, &e); }
                 }
@@ -1598,7 +1620,19 @@ pub unsafe extern "C" fn dkr_start(rt: *mut c_void, tris: *const f32, flags: *co
         let Some(r) = (unsafe { (rt as *const Runtime).as_ref() }) else { return 0 };
         if spawn.is_null() { return 0; }
         let s = unsafe { std::slice::from_raw_parts(spawn, 3) };
-        r.send.send(Job::Start { tris: tris_from(tris, flags, n), spawn: Vec3::new(s[0], s[1], s[2]), heading: heading_deg, autopilot: autopilot != 0 }).is_ok() as u32
+        r.send.send(Job::Start { tris: tris_from(tris, flags, n), spawn: Vec3::new(s[0], s[1], s[2]), heading: heading_deg, autopilot: autopilot != 0, preload: false }).is_ok() as u32
+    })
+}
+
+/// #2: loads Skate in the background around `spawn` (game world; triangles as `dkr_start`) and parks it, so the first
+/// `dkr_start` resumes at once instead of loading (about 8 s). Nothing is stepped or reported active until that start.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dkr_preload(rt: *mut c_void, tris: *const f32, flags: *const u8, n: u32, spawn: *const f32, heading_deg: f32) -> u32 {
+    guard(0, || {
+        let Some(r) = (unsafe { (rt as *const Runtime).as_ref() }) else { return 0 };
+        if spawn.is_null() { return 0; }
+        let s = unsafe { std::slice::from_raw_parts(spawn, 3) };
+        r.send.send(Job::Start { tris: tris_from(tris, flags, n), spawn: Vec3::new(s[0], s[1], s[2]), heading: heading_deg, autopilot: false, preload: true }).is_ok() as u32
     })
 }
 
@@ -2021,6 +2055,100 @@ mod tests {
         assert!(bare.as_ref().is_err_and(|e| e.contains("gesture")), "the d-pad should reach the gesture path: {bare:?}");
         let (ticks, states) = run(true).expect("with SK8V's gestures every d-pad press plays");
         println!("with gestures {GESTURES:?}: {ticks} ticks, states {states:?}");
+    }
+
+    /// #2: through the C interface as the plugin uses it: `dkr_preload` loads Skate and stays parked (never active, no
+    /// steps), then the first `dkr_start` 30 m away resumes without a reload. Prints how long that start takes.
+    /// DKR_ASSETS=skate-data/assets cargo test --release -- --ignored preload_then_start --nocapture
+    #[test]
+    #[ignore]
+    fn preload_then_start() {
+        let assets = std::ffi::CString::new(std::env::var("DKR_ASSETS").expect("set DKR_ASSETS")).unwrap();
+        let out_dir = std::env::temp_dir().join(format!("dkr-preload-{}", std::process::id()));
+        let out = std::ffi::CString::new(out_dir.to_string_lossy().into_owned()).unwrap();
+        let mut f = Vec::new();
+        for iy in -40..40 {
+            for ix in -40..40 {
+                let (x0, y0, x1, y1) = (ix as f32 * 2.0, iy as f32 * 2.0, ix as f32 * 2.0 + 2.0, iy as f32 * 2.0 + 2.0);
+                f.extend_from_slice(&[x0, y0, 0.0, x1, y0, 0.0, x1, y1, 0.0, x0, y0, 0.0, x1, y1, 0.0, x0, y1, 0.0]);
+            }
+        }
+        let n = (f.len() / 9) as u32;
+        let state = |rt: *mut c_void| { let mut s = DkrState { size: std::mem::size_of::<DkrState>() as u32, ..Default::default() };
+                                        unsafe { dkr_get_state(rt, &mut s) }; s };
+        unsafe {
+            let rt = dkr_create(assets.as_ptr(), out.as_ptr());
+            assert!(!rt.is_null());
+            let t0 = std::time::Instant::now();
+            assert_eq!(dkr_preload(rt, f.as_ptr(), std::ptr::null(), n, [0.0f32, 0.0, 0.0].as_ptr(), 0.0), 1);
+            let log = out_dir.join("deckrunner-runtime.log");
+            while !std::fs::read_to_string(&log).unwrap_or_default().contains("preloaded in") {
+                assert!(t0.elapsed().as_secs() < 120, "preload never finished");
+                assert_ne!(state(rt).status, STATUS_ACTIVE, "a preload is never active");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            println!("preloaded in {} ms; status {}", t0.elapsed().as_millis(), state(rt).status);
+            assert_eq!(state(rt).status, STATUS_IDLE);
+            let t1 = std::time::Instant::now();
+            assert_eq!(dkr_start(rt, f.as_ptr(), std::ptr::null(), n, [30.0f32, 20.0, 0.0].as_ptr(), 90.0, 0), 1);
+            let pad = DkrPad::default();
+            loop {
+                let s = state(rt);
+                if s.status == STATUS_ACTIVE && s.tick > 0 {
+                    println!("first start: riding state {:?} at tick {} after {} ms, at ({:.1}, {:.1}, {:.1})",
+                             CStr::from_ptr(s.state.as_ptr() as *const c_char), s.tick, t1.elapsed().as_millis(), s.pos[0], s.pos[1], s.pos[2]);
+                    assert!((s.pos[0] - 30.0).abs() < 1.0 && (s.pos[1] - 20.0).abs() < 1.0, "the skater is at the start, not the preload");
+                    break;
+                }
+                assert!(t1.elapsed().as_secs() < 10, "the first start took too long (status {})", s.status);
+                dkr_step(rt, 1.0 / 60.0, &pad);
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            assert!(text.contains("session resumed in"), "the first start resumed the preloaded session");
+            for l in text.lines().filter(|l| l.contains("preload") || l.contains("resumed")) { println!("log: {l}"); }
+            dkr_destroy(rt);
+        }
+        let _ = std::fs::remove_dir_all(&out_dir);
+    }
+
+    /// #2: a player's start (no autopilot) stands the skater at the spawn, off the board with it in hand; Y gets on.
+    /// DKR_ASSETS=skate-data/assets cargo test --release -- --ignored starts_on_foot --nocapture
+    #[test]
+    #[ignore]
+    fn starts_on_foot() {
+        let root = PathBuf::from(std::env::var("DKR_ASSETS").expect("set DKR_ASSETS"));
+        let mut tris = Vec::new();
+        for iy in -10..10 {
+            for ix in -10..10 {
+                let (x0, y0, x1, y1) = (ix as f32 * 2.0, iy as f32 * 2.0, ix as f32 * 2.0 + 2.0, iy as f32 * 2.0 + 2.0);
+                let p = |x: f32, y: f32| Vec3::new(x, y, 0.0);
+                tris.push(Tri { p: [p(x0, y0), p(x1, y0), p(x1, y1)], physical: true });
+                tris.push(Tri { p: [p(x0, y0), p(x1, y1), p(x0, y1)], physical: true });
+            }
+        }
+        let spawn = Vec3::new(1.0, 2.0, 0.0);
+        let spawn_s = coords::to_skate(spawn).to_array();
+        let p = prepare(&tris, Vec3::ZERO, &mut Default::default());
+        let mut s = Session::new_tagged(&root, p.tris, p.tags, p.rails, spawn_s, coords::skate_heading(0.0)).expect("session");
+        configure(&mut s);
+        enter(&mut s, spawn_s, 30.0, false).expect("enter on foot");
+        for _ in 0..30 { s.tick(Controls::default()).expect("stand"); }
+        let v = s.lifecycle_view();
+        let at = coords::from_skate(s.pose().root.w_axis.truncate());
+        println!("after 30 ticks standing: state {} ({}), board possession {}, at ({:.2}, {:.2}, {:.2})",
+                 v.state, s.pose().state, v.board_possession, at.x, at.y, at.z);
+        assert_eq!(v.state, 500, "BipedGround: standing, off the board");
+        assert_eq!(v.board_possession, 1, "the board is held");
+        assert!((at - spawn).truncate().length() < 0.5, "stands where it started");
+        let mut on = None;
+        for t in 0..240u32 {
+            let buttons = if t < 10 { 0x8000 } else { 0 };  // Y: Skate's board action
+            s.tick(Controls { buttons, ..Controls::default() }).expect("mount");
+            if s.lifecycle_view().state < 500 { on = Some(t); break; }
+        }
+        println!("Y: on the board after {on:?} ticks, state {}", s.pose().state);
+        assert!(on.is_some(), "Y gets on the board");
     }
 
     /// #6: a session runs in each of Skate 3's physics modes, set before `activate` as the worker does, and switches mode
